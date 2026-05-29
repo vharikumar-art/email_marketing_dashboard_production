@@ -48,8 +48,9 @@ from app.schemas import (
     BankAccountUpdate,
     BankAccountResponse,
     SettingCategory,
-    SettingResponse,
+    LookupSettingsData,
     SettingItemAction,
+    SettingItemUpdateAction,
 )
 from app.config import SMTP_SERVER, SMTP_PORT, SMTP_USERNAME, SMTP_PASSWORD, EMAIL_FROM, OTP_ENABLED
 from app.auth import (
@@ -950,6 +951,28 @@ async def upload_user_photo(
     )
     return {"status": "success", "message": f"Photo updated for {email}", "photo_url": photo_path}
 
+@router.delete("/users/{email}/photo", status_code=200)
+def delete_user_photo(email: str, current_user: dict = Depends(get_current_user)):
+    """Delete a user's profile photo."""
+    if current_user["email"] != email and current_user.get("role") not in [UserRole.ADMIN, UserRole.MANAGER]:
+        raise HTTPException(status_code=403, detail="Not authorised to delete this user's photo")
+        
+    target = users_collection.find_one({"email": email})
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+        
+    delete_file_if_exists(target.get("photo_path"))
+    
+    users_collection.update_one(
+        {"email": email},
+        {"$set": {
+            "photo_path": None,
+            "photo_mime": None,
+            "has_photo": False
+        }}
+    )
+    return {"status": "success", "message": f"Photo deleted for {email}"}
+
 @router.post("/clients/{client_id}/photo", status_code=200)
 async def upload_client_photo(
     client_id: str,
@@ -978,6 +1001,25 @@ async def upload_client_photo(
         }}
     )
     return {"status": "success", "message": "Client photo uploaded successfully", "photo_url": photo_path}
+
+@router.delete("/clients/{client_id}/photo", status_code=200)
+def delete_client_photo(client_id: str, current_user: dict = Depends(require_manager_or_higher)):
+    """Delete a client's profile photo."""
+    target = clients_collection.find_one({"client_id": client_id})
+    if not target:
+        raise HTTPException(status_code=404, detail="Client not found")
+        
+    delete_file_if_exists(target.get("photo_path"))
+    
+    clients_collection.update_one(
+        {"client_id": client_id},
+        {"$set": {
+            "photo_path": None,
+            "photo_mime": None,
+            "has_photo": False
+        }}
+    )
+    return {"status": "success", "message": f"Client photo deleted successfully"}
 
 @router.get("/clients/{client_id}/photo")
 def get_client_photo(client_id: str):
@@ -1612,6 +1654,10 @@ def get_clients(current_user: dict = Depends(get_current_user)):
     clients = [format_mongo_id(c) for c in clients_collection.aggregate(pipeline)]
     resolved = resolve_client_handler_bulk(clients)
     
+    for c in resolved:
+        c.pop("photo_data", None)
+        c["photo_url"] = c.get("photo_path") or None
+    
     if current_user["role"] == UserRole.EMPLOYEE:
         employee_names = {current_user.get("full_name")}
         profile_names = set(current_user.get("profile_names", []))
@@ -2046,36 +2092,34 @@ def get_pending_payment_summary(current_user: dict = Depends(require_manager_or_
 
 # --- SETTINGS ---
 
-@router.get("/settings", response_model=ApiResponse[list[SettingResponse]])
+@router.get("/settings", response_model=ApiResponse[LookupSettingsData])
 def get_all_settings(current_user: dict = Depends(get_current_user)):
-    """Fetch all settings grouped by category."""
-    settings = list(settings_collection.find())
-    for s in settings:
-        s["_id"] = str(s["_id"])
+    """Fetch all settings grouped in a single document."""
+    settings = settings_collection.find_one({"key": "lookup_settings"})
+    if not settings:
+        settings = {}
+        
+    # Filter out MongoDB internal fields
+    data = {k: v for k, v in settings.items() if k not in ["_id", "key"]}
+    
     return {
         "status_code": 200,
         "status": "success",
         "message": "All settings fetched successfully",
-        "data": settings
+        "data": data
     }
 
-@router.get("/settings/{category}", response_model=ApiResponse[SettingResponse])
+@router.get("/settings/{category}", response_model=ApiResponse[list[str]])
 def get_setting_category(category: SettingCategory, current_user: dict = Depends(get_current_user)):
     """Fetch options for a specific setting category."""
-    setting = settings_collection.find_one({"category": category.value})
-    if not setting:
-        return {
-            "status_code": 200,
-            "status": "success",
-            "message": f"Category '{category.value}' is empty",
-            "data": {"category": category.value, "options": []}
-        }
-    setting["_id"] = str(setting["_id"])
+    settings = settings_collection.find_one({"key": "lookup_settings"})
+    options = settings.get(category.value, []) if settings else []
+    
     return {
         "status_code": 200,
         "status": "success",
         "message": f"Category '{category.value}' fetched successfully",
-        "data": setting
+        "data": options
     }
 
 @router.post("/settings/{category}/add", response_model=ApiResponse[dict])
@@ -2085,8 +2129,8 @@ def add_setting_option(category: SettingCategory, action: SettingItemAction, cur
         raise HTTPException(status_code=400, detail="Option cannot be empty")
         
     result = settings_collection.update_one(
-        {"category": category.value},
-        {"$addToSet": {"options": action.option.strip()}},
+        {"key": "lookup_settings"},
+        {"$addToSet": {category.value: action.option.strip()}},
         upsert=True
     )
     return {
@@ -2100,8 +2144,8 @@ def add_setting_option(category: SettingCategory, action: SettingItemAction, cur
 def remove_setting_option(category: SettingCategory, action: SettingItemAction, current_user: dict = Depends(require_manager_or_higher)):
     """Remove an option from a setting category."""
     result = settings_collection.update_one(
-        {"category": category.value},
-        {"$pull": {"options": action.option}}
+        {"key": "lookup_settings"},
+        {"$pull": {category.value: action.option}}
     )
     if result.modified_count == 0:
         raise HTTPException(status_code=404, detail="Option not found in category")
@@ -2110,6 +2154,34 @@ def remove_setting_option(category: SettingCategory, action: SettingItemAction, 
         "status_code": 200,
         "status": "success",
         "message": f"Removed '{action.option}' from '{category.value}'",
+        "data": None
+    }
+
+@router.put("/settings/{category}/update", response_model=ApiResponse[dict])
+def update_setting_option(category: SettingCategory, action: SettingItemUpdateAction, current_user: dict = Depends(require_manager_or_higher)):
+    """Update an existing option in a setting category."""
+    if not action.new_option or not action.new_option.strip():
+        raise HTTPException(status_code=400, detail="New option cannot be empty")
+        
+    # Atomic pull old and push new using positional operator requires matching the array element
+    # Since we can't easily dynamically build the key for positional array update using the category.value in PyMongo directly like category.value+"$" if it's dynamic
+    # Wait, we can construct the query: {"key": "lookup_settings", category.value: action.old_option}
+    # and update: {"$set": {f"{category.value}.$": action.new_option.strip()}}
+    
+    result = settings_collection.update_one(
+        {"key": "lookup_settings", category.value: action.old_option},
+        {
+            "$set": {f"{category.value}.$": action.new_option.strip()}
+        }
+    )
+    
+    if result.modified_count == 0:
+        raise HTTPException(status_code=404, detail="Option not found or no changes made")
+        
+    return {
+        "status_code": 200,
+        "status": "success",
+        "message": f"Updated option to '{action.new_option}' in '{category.value}'",
         "data": None
     }
 

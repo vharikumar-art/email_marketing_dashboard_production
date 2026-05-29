@@ -176,12 +176,22 @@ class SettingCategory(str, Enum):
     bank_account = "bank_account"
     we_chat = "we_chat"
 
-class SettingResponse(BaseModel):
-    category: SettingCategory
-    options: list[str] = Field(default_factory=list)
+class LookupSettingsData(BaseModel):
+    order_type: list[str] = Field(default_factory=list)
+    index: list[str] = Field(default_factory=list)
+    rank: list[str] = Field(default_factory=list)
+    currency: list[str] = Field(default_factory=list)
+    payment_status: list[str] = Field(default_factory=list)
+    order_status: list[str] = Field(default_factory=list)
+    bank_account: list[str] = Field(default_factory=list)
+    we_chat: list[str] = Field(default_factory=list)
 
 class SettingItemAction(BaseModel):
     option: str
+
+class SettingItemUpdateAction(BaseModel):
+    old_option: str
+    new_option: str
 
 # --- BANK ACCOUNTS SCHEMA ---
 
