@@ -164,6 +164,25 @@ class OTPVerifyRequest(BaseModel):
     email: EmailStr
     otp: str
 
+# --- SETTINGS SCHEMA ---
+
+class SettingCategory(str, Enum):
+    order_type = "order_type"
+    index = "index"
+    rank = "rank"
+    currency = "currency"
+    payment_status = "payment_status"
+    order_status = "order_status"
+    bank_account = "bank_account"
+    we_chat = "we_chat"
+
+class SettingResponse(BaseModel):
+    category: SettingCategory
+    options: list[str] = Field(default_factory=list)
+
+class SettingItemAction(BaseModel):
+    option: str
+
 # --- BANK ACCOUNTS SCHEMA ---
 
 class BankAccountBase(BaseModel):

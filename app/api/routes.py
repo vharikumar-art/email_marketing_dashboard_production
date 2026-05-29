@@ -1,4 +1,5 @@
 from typing import Optional, Any, Annotated
+from pydantic import Json
 import re
 import os
 import random
@@ -46,6 +47,9 @@ from app.schemas import (
     BankAccountCreate,
     BankAccountUpdate,
     BankAccountResponse,
+    SettingCategory,
+    SettingResponse,
+    SettingItemAction,
 )
 from app.config import SMTP_SERVER, SMTP_PORT, SMTP_USERNAME, SMTP_PASSWORD, EMAIL_FROM, OTP_ENABLED
 from app.auth import (
@@ -1630,11 +1634,15 @@ def get_clients(current_user: dict = Depends(get_current_user)):
             for w in emp["we_chats"]
         }
                 
+    # Fetch order types dynamically
+    order_type_setting = settings_collection.find_one({"category": SettingCategory.order_type.value})
+    order_type_options = order_type_setting.get("options", []) if order_type_setting else ORDER_TYPE_OPTIONS
+
     detail = {
         "employee_names": list(employee_names),
         "profile_names": list(profile_names),
         "we_chats": list(we_chats),
-        "order_type_options": ORDER_TYPE_OPTIONS
+        "order_type_options": order_type_options
     }
 
     return {
@@ -2034,6 +2042,75 @@ def get_pending_payment_summary(current_user: dict = Depends(require_manager_or_
             "pending_clients_count": pending_clients_count,
             "top_pending_clients": pending_clients[:10]  # Top 10 for overview
         }
+    }
+
+# --- SETTINGS ---
+
+@router.get("/settings", response_model=ApiResponse[list[SettingResponse]])
+def get_all_settings(current_user: dict = Depends(get_current_user)):
+    """Fetch all settings grouped by category."""
+    settings = list(settings_collection.find())
+    for s in settings:
+        s["_id"] = str(s["_id"])
+    return {
+        "status_code": 200,
+        "status": "success",
+        "message": "All settings fetched successfully",
+        "data": settings
+    }
+
+@router.get("/settings/{category}", response_model=ApiResponse[SettingResponse])
+def get_setting_category(category: SettingCategory, current_user: dict = Depends(get_current_user)):
+    """Fetch options for a specific setting category."""
+    setting = settings_collection.find_one({"category": category.value})
+    if not setting:
+        return {
+            "status_code": 200,
+            "status": "success",
+            "message": f"Category '{category.value}' is empty",
+            "data": {"category": category.value, "options": []}
+        }
+    setting["_id"] = str(setting["_id"])
+    return {
+        "status_code": 200,
+        "status": "success",
+        "message": f"Category '{category.value}' fetched successfully",
+        "data": setting
+    }
+
+@router.post("/settings/{category}/add", response_model=ApiResponse[dict])
+def add_setting_option(category: SettingCategory, action: SettingItemAction, current_user: dict = Depends(require_manager_or_higher)):
+    """Add a new option to a setting category."""
+    if not action.option or not action.option.strip():
+        raise HTTPException(status_code=400, detail="Option cannot be empty")
+        
+    result = settings_collection.update_one(
+        {"category": category.value},
+        {"$addToSet": {"options": action.option.strip()}},
+        upsert=True
+    )
+    return {
+        "status_code": 200,
+        "status": "success",
+        "message": f"Added '{action.option}' to '{category.value}'",
+        "data": None
+    }
+
+@router.delete("/settings/{category}/remove", response_model=ApiResponse[dict])
+def remove_setting_option(category: SettingCategory, action: SettingItemAction, current_user: dict = Depends(require_manager_or_higher)):
+    """Remove an option from a setting category."""
+    result = settings_collection.update_one(
+        {"category": category.value},
+        {"$pull": {"options": action.option}}
+    )
+    if result.modified_count == 0:
+        raise HTTPException(status_code=404, detail="Option not found in category")
+        
+    return {
+        "status_code": 200,
+        "status": "success",
+        "message": f"Removed '{action.option}' from '{category.value}'",
+        "data": None
     }
 
 # --- BANK ACCOUNTS ---
@@ -2476,7 +2553,7 @@ def update_dashboard_order(order_db_id: str, update_data: DashboardUpdate, curre
 
 @router.post("/unified/create", response_model=ApiResponse[dict], status_code=status.HTTP_201_CREATED)
 def create_unified_record(
-    request: Annotated[UnifiedCreateRequest, Form()],
+    request: Annotated[Json[UnifiedCreateRequest], Form()],
     client_photo: Optional[UploadFile] = File(None),
     current_user: dict = Depends(get_current_user)
 ):
