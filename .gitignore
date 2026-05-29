@@ -17,3 +17,5 @@ secret_key.txt
 .pytest_cache/
 tests/
 scratch/
+
+migrate_settings.py
