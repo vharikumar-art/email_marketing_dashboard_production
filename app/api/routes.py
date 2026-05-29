@@ -2276,12 +2276,41 @@ def get_dashboard_orders(current_user: dict = Depends(get_current_user)):
     """
     cache_key = dashboard_cache_key(current_user.get("email", "anonymous"), current_user.get("role", "unknown"))
     cached_data = cache_manager.get(cache_key)
+    
+    # Helper to build detail
+    def _build_dashboard_detail():
+        if current_user["role"] == UserRole.EMPLOYEE:
+            employee_names = {current_user.get("full_name")}
+            profile_names = set(current_user.get("profile_names", []))
+            we_chats = set(current_user.get("we_chats", []))
+        else:
+            employees_data = list(users_collection.find(
+                {"role": UserRole.EMPLOYEE}, 
+                {"full_name": 1, "profile_names": 1, "we_chats": 1, "_id": 0}
+            ))
+            employee_names = {emp["full_name"] for emp in employees_data if emp.get("full_name")}
+            profile_names = {p for emp in employees_data if isinstance(emp.get("profile_names"), list) for p in emp["profile_names"]}
+            we_chats = {w for emp in employees_data if isinstance(emp.get("we_chats"), list) for w in emp["we_chats"]}
+            
+        settings = settings_collection.find_one({"key": "lookup_settings"}) or {}
+        order_type_options = settings.get(SettingCategory.order_type.value, ORDER_TYPE_OPTIONS)
+        bank_account_options = settings.get(SettingCategory.bank_account.value, [])
+        
+        return {
+            "employee_names": list(employee_names),
+            "profile_names": list(profile_names),
+            "we_chats": list(we_chats),
+            "order_type_options": order_type_options,
+            "bank_account_options": bank_account_options
+        }
+
     if cached_data is not None:
         return {
             "status_code": 200,
             "status": "success",
             "message": "Dashboard data fetched successfully",
-            "data": cached_data
+            "data": cached_data,
+            "detail": _build_dashboard_detail()
         }
 
     # 1. Get filtered clients query
@@ -2476,11 +2505,48 @@ def get_dashboard_orders(current_user: dict = Depends(get_current_user)):
 
     cache_manager.set(cache_key, dashboard_data)
 
+    if current_user["role"] == UserRole.EMPLOYEE:
+        employee_names = {current_user.get("full_name")}
+        profile_names = set(current_user.get("profile_names", []))
+        we_chats = set(current_user.get("we_chats", []))
+    else:
+        # Optimized retrieval of employee and profile names using projection and efficient sets
+        employees_data = list(users_collection.find(
+            {"role": UserRole.EMPLOYEE}, 
+            {"full_name": 1, "profile_names": 1, "we_chats": 1, "_id": 0}
+        ))
+        employee_names = {emp["full_name"] for emp in employees_data if emp.get("full_name")}
+        profile_names = {
+            p for emp in employees_data 
+            if isinstance(emp.get("profile_names"), list) 
+            for p in emp["profile_names"]
+        }
+        we_chats = {
+            w for emp in employees_data 
+            if isinstance(emp.get("we_chats"), list) 
+            for w in emp["we_chats"]
+        }
+                
+    # Fetch order types dynamically
+    settings = settings_collection.find_one({"key": "lookup_settings"}) or {}
+    order_type_options = settings.get(SettingCategory.order_type.value, ORDER_TYPE_OPTIONS)
+    
+    bank_account_options = settings.get(SettingCategory.bank_account.value, [])
+
+    detail = {
+        "employee_names": list(employee_names),
+        "profile_names": list(profile_names),
+        "we_chats": list(we_chats),
+        "order_type_options": order_type_options,
+        "bank_account_options": bank_account_options
+    }
+
     return {
         "status_code": 200,
         "status": "success",
         "message": "Dashboard data fetched successfully",
-        "data": dashboard_data
+        "data": dashboard_data,
+        "detail": detail
     }
 
 @router.patch("/dashboard/orders/{order_db_id}", response_model=ApiResponse[dict])
@@ -2500,9 +2566,15 @@ def update_dashboard_order(order_db_id: str, update_data: DashboardUpdate, curre
         }
 
     # 2. Map fields to collections
-    client_fields = ["client_id", "client_country", "client_Email", "client_whatsapp_number", "client_link", "bank_account", "client_affiliations"]
-    order_fields = ["manuscript_id", "order_date", "reference_id", "ref_no", "journal_name", "title", "order_type", "index", "rank", "currency", "total_amount", "writing_amount", "modification_amount", "implementation_amount", "po_amount", "writing_start_date", "writing_end_date", "modification_start_date", "modification_end_date", "po_start_date", "po_end_date", "payment_status", "remarks", "order_status", "payment_drive_link", "paid_amount", "clients_details", "client_details", "client_drive_link", "is_new_order"]
-    payment_fields = ["phase_1_payment", "phase_1_payment_date", "phase_1_payment_details", "phase_2_payment", "phase_2_payment_date", "phase_2_payment_details", "phase_3_payment", "phase_3_payment_date", "phase_3_payment_details","payment_status", "paid_amount"]
+    client_fields = ["client_name", "client_id", "client_country", "client_Email", "client_whatsapp_number", "client_link", "bank_account", "client_affiliations", "client_handler"]
+    order_fields = ["manuscript_id", "order_date", "reference_id", "ref_no", "journal_name", "title", "order_type", "we_chat", "index", "rank", "currency", "total_amount", "writing_amount", "modification_amount", "implementation_amount", "po_amount", "writing_start_date", "writing_end_date", "modification_start_date", "modification_end_date", "po_start_date", "po_end_date", "payment_status", "remarks", "order_status", "payment_drive_link", "paid_amount", "clients_details", "client_details", "client_drive_link", "is_new_order"]
+
+    # Map client_handler_name to client_handler email if provided
+    if "client_handler_name" in update_dict:
+        email = get_user_email_by_name(update_dict["client_handler_name"])
+        update_dict["client_handler"] = email
+        update_dict.pop("client_handler_name", None)
+    payment_fields = ["phase_1_payment", "phase_1_payment_date", "phase_1_payment_details", "phase_1_receive_bank_account", "phase_2_payment", "phase_2_payment_date", "phase_2_payment_details", "phase_2_receive_bank_account", "phase_3_payment", "phase_3_payment_date", "phase_3_payment_details", "phase_3_receive_bank_account", "payment_status", "paid_amount"]
 
     # Get the order to verify it exists and find linked client
     try:
@@ -2527,13 +2599,13 @@ def update_dashboard_order(order_db_id: str, update_data: DashboardUpdate, curre
         # Map dashboard field names back to client collection names
         mapped_client_updates = {}
         mapping = {
+            "client_name": "name",
             "client_id": "client_id",
             "client_country": "country",
             "client_Email": "email",
             "client_whatsapp_number": "whatsapp_no",
             "client_link": "client_link",
             "bank_account": "bank_account",
-            "client_affiliations": "affiliation",
             "client_affiliations": "affiliation"
         }
         for k, v in client_updates.items():
@@ -2592,12 +2664,15 @@ def update_dashboard_order(order_db_id: str, update_data: DashboardUpdate, curre
                 "phase_1_payment": latest_payment.get("phase_1_payment", 0.0) if latest_payment else 0.0,
                 "phase_1_payment_date": latest_payment.get("phase_1_payment_date") if latest_payment else None,
                 "phase_1_payment_details": latest_payment.get("phase_1_payment_details") if latest_payment else None,
+                "phase_1_receive_bank_account": latest_payment.get("phase_1_receive_bank_account") if latest_payment else None,
                 "phase_2_payment": latest_payment.get("phase_2_payment", 0.0) if latest_payment else 0.0,
                 "phase_2_payment_date": latest_payment.get("phase_2_payment_date") if latest_payment else None,
                 "phase_2_payment_details": latest_payment.get("phase_2_payment_details") if latest_payment else None,
+                "phase_2_receive_bank_account": latest_payment.get("phase_2_receive_bank_account") if latest_payment else None,
                 "phase_3_payment": latest_payment.get("phase_3_payment", 0.0) if latest_payment else 0.0,
                 "phase_3_payment_date": latest_payment.get("phase_3_payment_date") if latest_payment else None,
                 "phase_3_payment_details": latest_payment.get("phase_3_payment_details") if latest_payment else None,
+                "phase_3_receive_bank_account": latest_payment.get("phase_3_receive_bank_account") if latest_payment else None,
                 "updated_at": datetime.utcnow()
             }
             

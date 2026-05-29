@@ -318,9 +318,11 @@ class ClientOrderSummary(BaseModel):
     phase_2_payment: Optional[float] = 0.0
     phase_2_payment_date: Optional[datetime] = None
     phase_2_payment_details: Optional[str] = None
+    phase_2_receive_bank_account: Optional[str] = None
     phase_3_payment: Optional[float] = 0.0
     phase_3_payment_date: Optional[datetime] = None
     phase_3_payment_details: Optional[str] = None
+    phase_3_receive_bank_account: Optional[str] = None
     # Receipt screenshot images (relative URL to file on server, one per phase)
     receipt_phase_1_url: Optional[str] = None
     receipt_phase_1_mime: Optional[str] = None
@@ -580,6 +582,7 @@ class DashboardOrderResponse(BaseModel):
 
 class DashboardUpdate(BaseModel):
     # CLIENT FIELDS
+    client_name: Optional[str] = None
     client_id: Optional[str] = None
     client_country: Optional[str] = None
     client_Email: Optional[str] = None
@@ -587,6 +590,7 @@ class DashboardUpdate(BaseModel):
     client_link: Optional[str] = None
     bank_account: Optional[str] = None
     client_affiliations: Optional[str] = None
+    client_handler_name: Optional[str] = None
     
     
     # ORDER FIELDS
@@ -636,12 +640,15 @@ class DashboardUpdate(BaseModel):
     phase_1_payment: Optional[float] = None
     phase_1_payment_date: Optional[datetime] = None
     phase_1_payment_details: Optional[str] = None
+    phase_1_receive_bank_account: Optional[str] = None
     phase_2_payment: Optional[float] = None
     phase_2_payment_date: Optional[datetime] = None
     phase_2_payment_details: Optional[str] = None
+    phase_2_receive_bank_account: Optional[str] = None
     phase_3_payment: Optional[float] = None
     phase_3_payment_date: Optional[datetime] = None
     phase_3_payment_details: Optional[str] = None
+    phase_3_receive_bank_account: Optional[str] = None
     payment_drive_link: Optional[str] = None
     order_status: Optional[str] = None
     paid_amount : Optional[float] = 0.0 
@@ -765,12 +772,15 @@ class PaymentHistoryItem(BaseModel):
     phase_1_payment: Optional[float] = 0.0
     phase_1_payment_date: Optional[datetime] = None
     phase_1_payment_details: Optional[str] = None
+    phase_1_receive_bank_account: Optional[str] = None
     phase_2_payment: Optional[float] = 0.0
     phase_2_payment_date: Optional[datetime] = None
     phase_2_payment_details: Optional[str] = None
+    phase_2_receive_bank_account: Optional[str] = None
     phase_3_payment: Optional[float] = 0.0
     phase_3_payment_date: Optional[datetime] = None
     phase_3_payment_details: Optional[str] = None
+    phase_3_receive_bank_account: Optional[str] = None
     created_at: Optional[datetime] = Field(default_factory=datetime.utcnow)
 
 
