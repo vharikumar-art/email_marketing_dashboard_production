@@ -25,5 +25,5 @@ PRODUCTION_IP= os.getenv("PRODUCTION_IP")
 raw_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:5173," \
 "https://marketing-dashboard123.vercel.app," \
 "https://dashboard-marketing-team-phase2.vercel.app," \
-"PRODUCTION_IP")
+"http://13.206.26.177")
 ALLOWED_ORIGINS = [origin.strip().rstrip("/") for origin in raw_origins.split(",") if origin.strip()]
