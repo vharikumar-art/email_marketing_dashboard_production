@@ -2567,7 +2567,7 @@ def update_dashboard_order(order_db_id: str, update_data: DashboardUpdate, curre
 
     # 2. Map fields to collections
     client_fields = ["client_name", "client_id", "client_country", "client_Email", "client_whatsapp_number", "client_link", "bank_account", "client_affiliations", "client_handler"]
-    order_fields = ["manuscript_id", "order_date", "reference_id", "ref_no", "journal_name", "title", "order_type", "we_chat", "index", "rank", "currency", "total_amount", "writing_amount", "modification_amount", "implementation_amount", "po_amount", "writing_start_date", "writing_end_date", "modification_start_date", "modification_end_date", "po_start_date", "po_end_date", "payment_status", "remarks", "order_status", "payment_drive_link", "paid_amount", "clients_details", "client_details", "client_drive_link", "is_new_order"]
+    order_fields = ["manuscript_id", "order_date", "reference_id", "ref_no", "journal_name", "title", "order_type", "we_chat", "index", "rank", "currency", "total_amount", "writing_amount", "modification_amount", "implementation_amount", "po_amount", "writing_start_date", "writing_end_date", "modification_start_date", "modification_end_date", "po_start_date", "po_end_date", "payment_status", "remarks", "order_status", "payment_drive_link", "receipt_drive_link", "receive_bank_account", "paid_amount", "clients_details", "client_details", "client_drive_link", "is_new_order"]
 
     # Map client_handler_name to client_handler email if provided
     if "client_handler_name" in update_dict:

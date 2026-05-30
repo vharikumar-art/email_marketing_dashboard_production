@@ -412,6 +412,7 @@ class OrderBase(BaseModel):
     clients_details: Optional[str] = None  # New field for detailed client information
     client_drive_link: Optional[str] = None  # New field for client drive link
     payment_drive_link: Optional[str] = None  # New field - SOURCE for orders payment_drive_link
+    receipt_drive_link: Optional[str] = None  # New field for receipt drive link
     receive_bank_account: Optional[str] = None
     is_new_order: str = "yes"
     
@@ -548,6 +549,7 @@ class DashboardOrderResponse(BaseModel):
     remarks: Optional[str] = None
     client_drive_link: Optional[str] = None
     payment_drive_link: Optional[str] = None
+    receipt_drive_link: Optional[str] = None
     client_order_type: Optional[str] = None
     clients_details: Optional[str] = None
     amount: Optional[float] = None
@@ -622,6 +624,7 @@ class DashboardUpdate(BaseModel):
     clients_details: Optional[str] = None
     client_details: Optional[str] = None  # Fallback for UI compatibility
     client_drive_link: Optional[str] = None
+    receipt_drive_link: Optional[str] = None
     receive_bank_account: Optional[str] = None
     is_new_order: Optional[str] = None
 
@@ -682,6 +685,7 @@ class UnifiedCreateRequest(BaseModel):
     client_details: Optional[str] = None  # Fallback for UI compatibility
     client_drive_link: Optional[str] = None  # New field for client drive link
     payment_drive_link: Optional[str] = None  # New field for payment drive link
+    receipt_drive_link: Optional[str] = None  # New field for receipt drive link
     client_handler: Optional[str] = None  # For admin/manager to assign a handler
     order_date: Optional[str] = None
     reference_id: Optional[str] = None
@@ -740,7 +744,7 @@ class UnifiedCreateRequest(BaseModel):
         "order_date", "journal_name", "title", "order_type", "index", "rank",
         "write_start_date", "profile_start_date", "writing_start_date", "writing_end_date",
         "modification_start_date", "modification_end_date", "po_start_date", "po_end_date",
-        "payment_date", "payment_received_account", "client_id", "reference_id", "client_order_type", "receive_bank_account",
+        "payment_date", "payment_received_account", "client_id", "reference_id", "client_order_type", "receive_bank_account", "receipt_drive_link",
         mode="before"
     )
     @classmethod
