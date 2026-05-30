@@ -1,7 +1,7 @@
 # API Documentation - Email Dashboard
 
 ## Base URL
-- **Production**: `https://marketing-dashboard-api.render.com` (Example)
+- **Production**: `http://[IP_ADDRESS]`
 - **Local**: `http://localhost:8000`
 
 ## Authentication
