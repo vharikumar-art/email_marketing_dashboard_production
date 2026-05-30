@@ -1337,7 +1337,7 @@ def get_user_dashboard_data(client_match: dict):
                             "paid_order_count": {
                                 "$sum": {
                                     "$cond": [
-                                        {"$gte": ["$order_paid", "$order_total_usd"]},
+                                        {"$eq": ["$payment_status", "Paid"]},
                                         1, 0
                                     ]
                                 }
@@ -1347,7 +1347,7 @@ def get_user_dashboard_data(client_match: dict):
                                     "$cond": [
                                         {
                                             "$and": [
-                                                {"$lt": ["$order_paid", "$order_total_usd"]},
+                                                {"$ne": ["$payment_status", "Paid"]},
                                                 {"$ne": ["$order_status", "Inactive"]}
                                             ]
                                         },
@@ -1366,19 +1366,7 @@ def get_user_dashboard_data(client_match: dict):
                                     "total_amount": "$order_total_usd",
                                     "paid_amount": "$order_paid",
                                     "is_new_order": "$is_new_order",
-                                    "payment_status": {
-                                        "$cond": [
-                                            {"$gte": ["$order_paid", "$order_total_usd"]},
-                                            "Paid",
-                                            {
-                                                "$cond": [
-                                                    {"$gt": ["$order_paid", 0]},
-                                                    "Partial Paid",
-                                                    "Pending"
-                                                ]
-                                            }
-                                        ]
-                                    },
+                                    "payment_status": "$payment_status",
                                     "created_at": "$created_at",
                                     "order_date": "$order_date"
                                 }
