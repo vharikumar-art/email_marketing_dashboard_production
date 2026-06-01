@@ -19,6 +19,7 @@ payment_history_collection = db["payment_history"]
 otps_collection = db["otps"]
 settings_collection = db["settings"]
 bank_accounts_collection = db["bank_accounts"]
+audit_logs_collection = db["audit_logs"]
 
 def ensure_indexes():
     """Create MongoDB indexes once during application startup."""
@@ -42,3 +43,6 @@ def ensure_indexes():
     payment_history_collection.create_index("payment_date")
     tokens_collection.create_index("token", unique=True)
     tokens_collection.create_index("created_at", expireAfterSeconds=36000)
+    audit_logs_collection.create_index([("document_id", 1), ("field_name", 1)])
+    audit_logs_collection.create_index("collection_name")
+    audit_logs_collection.create_index("edited_at")

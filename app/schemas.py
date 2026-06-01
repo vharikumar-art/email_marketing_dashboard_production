@@ -834,3 +834,22 @@ class CurrencyConvertRequest(BaseModel):
         if val not in allowed:
             raise ValueError(f"Currency must be one of {allowed}")
         return val
+
+# --- AUDIT LOGS ---
+class AuditLogBase(BaseModel):
+    document_id: str
+    collection_name: str
+    field_name: str
+    old_value: Optional[Any] = None
+    new_value: Optional[Any] = None
+    edited_by: str
+    edited_at: datetime = Field(default_factory=datetime.utcnow)
+
+class AuditLogCreate(AuditLogBase):
+    pass
+
+class AuditLogResponse(AuditLogBase):
+    id: str = Field(..., alias="_id")
+
+    class Config:
+        populate_by_name = True

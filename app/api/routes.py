@@ -74,12 +74,28 @@ from app.database import (
     otps_collection,
     settings_collection,
     bank_accounts_collection,
+    audit_logs_collection,
 )
 from app.currency_converter import convert_inr_to_usd, convert_usd_to_inr, get_current_rate_info, convert_currency
 from app.cache import cache_manager, dashboard_cache_key, invalidate_dashboard_cache
 
 router = APIRouter()
 # --- HELPER ---
+def record_audit_log(document_id: str, collection_name: str, old_doc: dict, new_doc: dict, user_email: str):
+    """Compares old_doc and new_doc, and records changes to audit_logs_collection."""
+    for key, new_val in new_doc.items():
+        if key in ["_id", "updated_at"]: continue
+        old_val = old_doc.get(key)
+        if old_val != new_val:
+            audit_logs_collection.insert_one({
+                "document_id": str(document_id),
+                "collection_name": collection_name,
+                "field_name": key,
+                "old_value": old_val,
+                "new_value": new_val,
+                "edited_by": user_email,
+                "edited_at": datetime.utcnow()
+            })
 def is_otp_enabled() -> bool:
     """
     Check if OTP authentication is enabled.
@@ -2584,6 +2600,8 @@ def update_dashboard_order(order_db_id: str, update_data: DashboardUpdate, curre
     
     old_client_id = order["client_id"]
     order_custom_id = order["order_id"]
+    client_doc = clients_collection.find_one({"client_id": old_client_id})
+    payment_doc = payments_collection.find_one({"order_id": order_custom_id})
 
     # 3. Perform Updates
     
@@ -2610,6 +2628,8 @@ def update_dashboard_order(order_db_id: str, update_data: DashboardUpdate, curre
 
         # Update the client record
         clients_collection.update_one({"client_id": old_client_id}, {"$set": mapped_client_updates})
+        if client_doc:
+            record_audit_log(old_client_id, "clients", client_doc, mapped_client_updates, current_user["email"])
 
         # If client_id changed, ripple to all related collections
         if new_client_id and new_client_id != old_client_id:
@@ -2629,6 +2649,7 @@ def update_dashboard_order(order_db_id: str, update_data: DashboardUpdate, curre
             mapped_order_updates[mapping.get(k, k)] = v
         mapped_order_updates["updated_at"] = datetime.utcnow()
         orders_collection.update_one({"_id": ObjectId(order_db_id)}, {"$set": mapped_order_updates})
+        record_audit_log(str(order_db_id), "orders", order, mapped_order_updates, current_user["email"])
 
     # Update Payments â€” direct field update (same pattern as orders/clients)
     payment_updates_raw = {f: update_dict[f] for f in payment_fields if f in update_dict}
@@ -2638,6 +2659,8 @@ def update_dashboard_order(order_db_id: str, update_data: DashboardUpdate, curre
             {"$set": payment_updates_raw},
             upsert=True
         )
+        if payment_doc:
+            record_audit_log(str(payment_doc.get("_id", order_custom_id)), "payments", payment_doc, payment_updates_raw, current_user["email"])
         
     # Sync with payment_history_collection if order, client, or payment fields were updated
     if client_updates or order_updates or payment_updates_raw:
@@ -2947,5 +2970,32 @@ def create_unified_record(
         }
     }
 
+# --- AUDIT LOGS API ---
 
+@router.get("/history/{collection_name}/{document_id}/{field_name}", response_model=ApiResponse[list[dict]])
+def get_field_history(collection_name: str, document_id: str, field_name: str, current_user: dict = Depends(get_current_user)):
+    """
+    Fetch the edit history for a specific field of a specific document.
+    """
+    logs = list(audit_logs_collection.find({
+        "collection_name": collection_name,
+        "document_id": document_id,
+        "field_name": field_name
+    }).sort("edited_at", -1))
+    
+    # Format for response
+    formatted_logs = []
+    for log in logs:
+        formatted_logs.append({
+            "old_value": log.get("old_value"),
+            "new_value": log.get("new_value"),
+            "edited_by": log.get("edited_by"),
+            "edited_at": log.get("edited_at")
+        })
 
+    return {
+        "status_code": 200,
+        "status": "success",
+        "message": "History fetched successfully",
+        "data": formatted_logs
+    }
