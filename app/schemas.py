@@ -1,5 +1,5 @@
 from pydantic import BaseModel, EmailStr, Field, field_validator
-from typing import Optional, Generic, TypeVar, Any
+from typing import Optional, Generic, TypeVar, Any, Union
 from enum import Enum
 from datetime import datetime
 
@@ -183,15 +183,15 @@ class LookupSettingsData(BaseModel):
     currency: list[str] = Field(default_factory=list)
     payment_status: list[str] = Field(default_factory=list)
     order_status: list[str] = Field(default_factory=list)
-    bank_account: list[str] = Field(default_factory=list)
+    bank_account: list[Union[str, dict]] = Field(default_factory=list)
     we_chat: list[str] = Field(default_factory=list)
 
 class SettingItemAction(BaseModel):
-    option: str
+    option: Union[str, dict]
 
 class SettingItemUpdateAction(BaseModel):
-    old_option: str
-    new_option: str
+    old_option: Union[str, dict]
+    new_option: Union[str, dict]
 
 # --- BANK ACCOUNTS SCHEMA ---
 

@@ -2097,7 +2097,7 @@ def get_all_settings(current_user: dict = Depends(get_current_user)):
         "data": data
     }
 
-@router.get("/settings/{category}", response_model=ApiResponse[list[str]])
+@router.get("/settings/{category}", response_model=ApiResponse[list[Any]])
 def get_setting_category(category: SettingCategory, current_user: dict = Depends(get_current_user)):
     """Fetch options for a specific setting category."""
     settings = settings_collection.find_one({"key": "lookup_settings"})
@@ -2113,27 +2113,30 @@ def get_setting_category(category: SettingCategory, current_user: dict = Depends
 @router.post("/settings/{category}/add", response_model=ApiResponse[dict])
 def add_setting_option(category: SettingCategory, action: SettingItemAction, current_user: dict = Depends(require_manager_or_higher)):
     """Add a new option to a setting category."""
-    if not action.option or not action.option.strip():
+    if not action.option or (isinstance(action.option, str) and not action.option.strip()):
         raise HTTPException(status_code=400, detail="Option cannot be empty")
+        
+    value_to_add = action.option.strip() if isinstance(action.option, str) else action.option
         
     result = settings_collection.update_one(
         {"key": "lookup_settings"},
-        {"$addToSet": {category.value: action.option.strip()}},
+        {"$addToSet": {category.value: value_to_add}},
         upsert=True
     )
     return {
         "status_code": 200,
         "status": "success",
-        "message": f"Added '{action.option}' to '{category.value}'",
+        "message": f"Added option to '{category.value}'",
         "data": None
     }
 
 @router.delete("/settings/{category}/remove", response_model=ApiResponse[dict])
 def remove_setting_option(category: SettingCategory, action: SettingItemAction, current_user: dict = Depends(require_manager_or_higher)):
     """Remove an option from a setting category."""
+    value_to_remove = action.option.strip() if isinstance(action.option, str) else action.option
     result = settings_collection.update_one(
         {"key": "lookup_settings"},
-        {"$pull": {category.value: action.option}}
+        {"$pull": {category.value: value_to_remove}}
     )
     if result.modified_count == 0:
         raise HTTPException(status_code=404, detail="Option not found in category")
@@ -2141,25 +2144,23 @@ def remove_setting_option(category: SettingCategory, action: SettingItemAction, 
     return {
         "status_code": 200,
         "status": "success",
-        "message": f"Removed '{action.option}' from '{category.value}'",
+        "message": f"Removed option from '{category.value}'",
         "data": None
     }
 
 @router.put("/settings/{category}/update", response_model=ApiResponse[dict])
 def update_setting_option(category: SettingCategory, action: SettingItemUpdateAction, current_user: dict = Depends(require_manager_or_higher)):
     """Update an existing option in a setting category."""
-    if not action.new_option or not action.new_option.strip():
+    if not action.new_option or (isinstance(action.new_option, str) and not action.new_option.strip()):
         raise HTTPException(status_code=400, detail="New option cannot be empty")
         
-    # Atomic pull old and push new using positional operator requires matching the array element
-    # Since we can't easily dynamically build the key for positional array update using the category.value in PyMongo directly like category.value+"$" if it's dynamic
-    # Wait, we can construct the query: {"key": "lookup_settings", category.value: action.old_option}
-    # and update: {"$set": {f"{category.value}.$": action.new_option.strip()}}
+    old_val = action.old_option.strip() if isinstance(action.old_option, str) else action.old_option
+    new_val = action.new_option.strip() if isinstance(action.new_option, str) else action.new_option
     
     result = settings_collection.update_one(
-        {"key": "lookup_settings", category.value: action.old_option},
+        {"key": "lookup_settings", category.value: old_val},
         {
-            "$set": {f"{category.value}.$": action.new_option.strip()}
+            "$set": {f"{category.value}.$": new_val}
         }
     )
     
@@ -2169,7 +2170,7 @@ def update_setting_option(category: SettingCategory, action: SettingItemUpdateAc
     return {
         "status_code": 200,
         "status": "success",
-        "message": f"Updated option to '{action.new_option}' in '{category.value}'",
+        "message": f"Updated option in '{category.value}'",
         "data": None
     }
 
