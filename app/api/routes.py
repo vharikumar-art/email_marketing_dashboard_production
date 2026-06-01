@@ -1759,6 +1759,9 @@ def get_client(client_id: str, current_user: dict = Depends(require_manager_or_h
             "phase_3_payment":           payment.get("phase_3_payment", 0.0),
             "phase_3_payment_date":      payment.get("phase_3_payment_date"),
             "phase_3_payment_details":   payment.get("phase_3_payment_details"),
+            "phase_1_payment_method":    payment.get("phase_1_payment_method"),
+            "phase_2_payment_method":    payment.get("phase_2_payment_method"),
+            "phase_3_payment_method":    payment.get("phase_3_payment_method"),
         }
         
         # Inject receipt screenshot URLs for each phase (path stored in DB)
@@ -2371,6 +2374,9 @@ def get_dashboard_orders(current_user: dict = Depends(get_current_user)):
                 "phase_3_payment": {"$arrayElemAt": ["$p_list.phase_3_payment", 0]},
                 "phase_3_payment_date": {"$arrayElemAt": ["$p_list.phase_3_payment_date", 0]},
                 "phase_3_payment_details": {"$arrayElemAt": ["$p_list.phase_3_payment_details", 0]},
+                "phase_1_payment_method": {"$arrayElemAt": ["$p_list.phase_1_payment_method", 0]},
+                "phase_2_payment_method": {"$arrayElemAt": ["$p_list.phase_2_payment_method", 0]},
+                "phase_3_payment_method": {"$arrayElemAt": ["$p_list.phase_3_payment_method", 0]},
                 "payment_status": {"$ifNull": ["$order.payment_status", "No Order"]},
                 "paid_amount": {"$ifNull": ["$order.paid_amount", {"$ifNull": [{"$arrayElemAt": ["$p_list.paid_amount", 0]}, 0.0]}]},
                 "client_link": "$client_link",
@@ -2521,13 +2527,15 @@ def get_dashboard_orders(current_user: dict = Depends(get_current_user)):
     order_type_options = settings.get(SettingCategory.order_type.value, ORDER_TYPE_OPTIONS)
     
     bank_account_options = settings.get(SettingCategory.bank_account.value, [])
+    payment_method_options = settings.get(SettingCategory.payment_method.value, [])
 
     detail = {
         "employee_names": list(employee_names),
         "profile_names": list(profile_names),
         "we_chats": list(we_chats),
         "order_type_options": order_type_options,
-        "bank_account_options": bank_account_options
+        "bank_account_options": bank_account_options,
+        "payment_method_options": payment_method_options
     }
 
     return {
@@ -2563,7 +2571,7 @@ def update_dashboard_order(order_db_id: str, update_data: DashboardUpdate, curre
         email = get_user_email_by_name(update_dict["client_handler_name"])
         update_dict["client_handler"] = email
         update_dict.pop("client_handler_name", None)
-    payment_fields = ["phase_1_payment", "phase_1_payment_date", "phase_1_payment_details", "phase_1_receive_bank_account", "phase_2_payment", "phase_2_payment_date", "phase_2_payment_details", "phase_2_receive_bank_account", "phase_3_payment", "phase_3_payment_date", "phase_3_payment_details", "phase_3_receive_bank_account", "payment_status", "paid_amount"]
+    payment_fields = ["phase_1_payment", "phase_1_payment_date", "phase_1_payment_details", "phase_1_receive_bank_account", "phase_1_payment_method", "phase_2_payment", "phase_2_payment_date", "phase_2_payment_details", "phase_2_receive_bank_account", "phase_2_payment_method", "phase_3_payment", "phase_3_payment_date", "phase_3_payment_details", "phase_3_receive_bank_account", "phase_3_payment_method", "payment_status", "paid_amount"]
 
     # Get the order to verify it exists and find linked client
     try:
@@ -2662,6 +2670,9 @@ def update_dashboard_order(order_db_id: str, update_data: DashboardUpdate, curre
                 "phase_3_payment_date": latest_payment.get("phase_3_payment_date") if latest_payment else None,
                 "phase_3_payment_details": latest_payment.get("phase_3_payment_details") if latest_payment else None,
                 "phase_3_receive_bank_account": latest_payment.get("phase_3_receive_bank_account") if latest_payment else None,
+                "phase_1_payment_method": latest_payment.get("phase_1_payment_method") if latest_payment else None,
+                "phase_2_payment_method": latest_payment.get("phase_2_payment_method") if latest_payment else None,
+                "phase_3_payment_method": latest_payment.get("phase_3_payment_method") if latest_payment else None,
                 "updated_at": datetime.utcnow()
             }
             
@@ -2888,6 +2899,12 @@ def create_unified_record(
             "phase_3_payment": payment_data.get("phase_3_payment", 0.0),
             "phase_3_payment_date": payment_data.get("phase_3_payment_date"),
             "phase_3_payment_details": payment_data.get("phase_3_payment_details"),
+            "phase_1_receive_bank_account": payment_data.get("phase_1_receive_bank_account"),
+            "phase_1_payment_method": payment_data.get("phase_1_payment_method"),
+            "phase_2_receive_bank_account": payment_data.get("phase_2_receive_bank_account"),
+            "phase_2_payment_method": payment_data.get("phase_2_payment_method"),
+            "phase_3_receive_bank_account": payment_data.get("phase_3_receive_bank_account"),
+            "phase_3_payment_method": payment_data.get("phase_3_payment_method"),
             "created_at": datetime.utcnow()
         }
         payment_history_collection.insert_one(history_item)

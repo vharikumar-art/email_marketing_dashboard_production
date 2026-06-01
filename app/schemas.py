@@ -175,6 +175,7 @@ class SettingCategory(str, Enum):
     order_status = "order_status"
     bank_account = "bank_account"
     we_chat = "we_chat"
+    payment_method = "payment_method"
 
 class LookupSettingsData(BaseModel):
     order_type: list[str] = Field(default_factory=list)
@@ -185,6 +186,7 @@ class LookupSettingsData(BaseModel):
     order_status: list[str] = Field(default_factory=list)
     bank_account: list[Union[str, dict]] = Field(default_factory=list)
     we_chat: list[str] = Field(default_factory=list)
+    payment_method: list[str] = Field(default_factory=list)
 
 class SettingItemAction(BaseModel):
     option: Union[str, dict]
@@ -315,14 +317,18 @@ class ClientOrderSummary(BaseModel):
     phase_1_payment: Optional[float] = 0.0
     phase_1_payment_date: Optional[datetime] = None
     phase_1_payment_details: Optional[str] = None
+    phase_1_receive_bank_account: Optional[str] = None
+    phase_1_payment_method: Optional[str] = None
     phase_2_payment: Optional[float] = 0.0
     phase_2_payment_date: Optional[datetime] = None
     phase_2_payment_details: Optional[str] = None
     phase_2_receive_bank_account: Optional[str] = None
+    phase_2_payment_method: Optional[str] = None
     phase_3_payment: Optional[float] = 0.0
     phase_3_payment_date: Optional[datetime] = None
     phase_3_payment_details: Optional[str] = None
     phase_3_receive_bank_account: Optional[str] = None
+    phase_3_payment_method: Optional[str] = None
     # Receipt screenshot images (relative URL to file on server, one per phase)
     receipt_phase_1_url: Optional[str] = None
     receipt_phase_1_mime: Optional[str] = None
@@ -463,16 +469,20 @@ class PaymentBase(BaseModel):
     phase: int = 1
     amount: float = 0.0
     payment_received_account: Optional[str] = None
+    payment_method: Optional[str] = None
     payment_date: Optional[datetime] = None
     phase_1_payment: Optional[float] = 0.0
     phase_1_payment_date: Optional[datetime] = None
     phase_1_payment_details: Optional[str] = None
+    phase_1_payment_method: Optional[str] = None
     phase_2_payment: Optional[float] = 0.0
     phase_2_payment_date: Optional[datetime] = None
     phase_2_payment_details: Optional[str] = None
+    phase_2_payment_method: Optional[str] = None
     phase_3_payment: Optional[float] = 0.0
     phase_3_payment_date: Optional[datetime] = None
     phase_3_payment_details: Optional[str] = None
+    phase_3_payment_method: Optional[str] = None
     status: str = "Pending"
     paid_amount: Optional[float] = 0.0
 
@@ -530,12 +540,15 @@ class DashboardOrderResponse(BaseModel):
     phase_1_payment: float = 0.0
     phase_1_payment_date: Optional[datetime] = None
     phase_1_payment_details: Optional[str] = None
+    phase_1_payment_method: Optional[str] = None
     phase_2_payment: float = 0.0
     phase_2_payment_date: Optional[datetime] = None
     phase_2_payment_details: Optional[str] = None
+    phase_2_payment_method: Optional[str] = None
     phase_3_payment: float = 0.0
     phase_3_payment_date: Optional[datetime] = None
     phase_3_payment_details: Optional[str] = None
+    phase_3_payment_method: Optional[str] = None
     payment_status: Optional[str] = "Pending"
     client_link: Optional[str] = None
     bank_account: Optional[str] = None
@@ -644,14 +657,17 @@ class DashboardUpdate(BaseModel):
     phase_1_payment_date: Optional[datetime] = None
     phase_1_payment_details: Optional[str] = None
     phase_1_receive_bank_account: Optional[str] = None
+    phase_1_payment_method: Optional[str] = None
     phase_2_payment: Optional[float] = None
     phase_2_payment_date: Optional[datetime] = None
     phase_2_payment_details: Optional[str] = None
     phase_2_receive_bank_account: Optional[str] = None
+    phase_2_payment_method: Optional[str] = None
     phase_3_payment: Optional[float] = None
     phase_3_payment_date: Optional[datetime] = None
     phase_3_payment_details: Optional[str] = None
     phase_3_receive_bank_account: Optional[str] = None
+    phase_3_payment_method: Optional[str] = None
     payment_drive_link: Optional[str] = None
     order_status: Optional[str] = None
     paid_amount : Optional[float] = 0.0 
@@ -736,6 +752,7 @@ class UnifiedCreateRequest(BaseModel):
     payment_phase: Optional[int] = None
     payment_date: Optional[str] = None
     payment_received_account: Optional[str] = None
+    payment_method: Optional[str] = None
 
     @field_validator(
         "client_country", "client_email", "client_whatsapp_no", "client_ref_no", 
@@ -777,14 +794,17 @@ class PaymentHistoryItem(BaseModel):
     phase_1_payment_date: Optional[datetime] = None
     phase_1_payment_details: Optional[str] = None
     phase_1_receive_bank_account: Optional[str] = None
+    phase_1_payment_method: Optional[str] = None
     phase_2_payment: Optional[float] = 0.0
     phase_2_payment_date: Optional[datetime] = None
     phase_2_payment_details: Optional[str] = None
     phase_2_receive_bank_account: Optional[str] = None
+    phase_2_payment_method: Optional[str] = None
     phase_3_payment: Optional[float] = 0.0
     phase_3_payment_date: Optional[datetime] = None
     phase_3_payment_details: Optional[str] = None
     phase_3_receive_bank_account: Optional[str] = None
+    phase_3_payment_method: Optional[str] = None
     created_at: Optional[datetime] = Field(default_factory=datetime.utcnow)
 
 
