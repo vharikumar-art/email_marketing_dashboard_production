@@ -1093,3 +1093,45 @@ After migration, restart the server. All existing images will be available at th
 - [ ] View client details → check `photo_url` and `receipt_phase_N_url` in orders
 - [ ] Delete receipt screenshot → verify file removed from disk
 - [ ] Update order via PATCH endpoint
+
+---
+
+# 15. AUDIT HISTORY
+
+## 15.1 Get Cell Edit History
+**Endpoint:** `GET /history/{collection_name}/{document_id}/{field_name}`
+
+**Purpose:** Retrieves the chronologically ordered edit history of a specific field (cell) within a document.
+
+**Path Parameters:**
+- `collection_name`: The database collection (e.g., `clients`, `orders`, `payments`)
+- `document_id`: The ID of the document (e.g., custom `client_id` or `order_id`)
+- `field_name`: The specific field to look up (e.g., `client_handler`, `order_date`)
+
+**Auth Required:** Yes (Valid Bearer Token)
+
+**Example Request:**
+```bash
+curl -X GET http://localhost:8000/history/orders/ORD_123/order_date \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+**Response:**
+```json
+{
+  "status": "success",
+  "message": "History fetched successfully",
+  "data": [
+    {
+      "id": "647b1a...",
+      "collection_name": "orders",
+      "document_id": "ORD_123",
+      "field_name": "order_date",
+      "old_value": "2025-05-10T00:00:00",
+      "new_value": "2025-05-15T00:00:00",
+      "edited_by": "admin@example.com",
+      "edited_at": "2026-06-01T08:54:00"
+    }
+  ]
+}
+```

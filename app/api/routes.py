@@ -1227,6 +1227,58 @@ def append_we_chat(data: ProfileUpdate, current_user: dict = Depends(get_current
         "data": None
     }
 
+@router.post("/users/whatsapp_numbers/append", response_model=ApiResponse[dict])
+def append_whatsapp_number(data: ProfileUpdate, current_user: dict = Depends(get_current_user)):
+    """Append a new WhatsApp number to a user's list."""
+    target_user = users_collection.find_one({"email": data.email})
+    if not target_user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    users_collection.update_one(
+        {"email": data.email},
+        {"$addToSet": {"whatsapp_numbers": data.profile_name}}
+    )
+    return {
+        "status_code": 200,
+        "status": "success",
+        "message": f"WhatsApp number '{data.profile_name}' added to {data.email}",
+        "data": None
+    }
+
+@router.delete("/users/whatsapp_numbers/{email}/{whatsapp_number}", response_model=ApiResponse[dict])
+def delete_whatsapp_number(email: str, whatsapp_number: str, current_user: dict = Depends(get_current_user)):
+    """Remove a WhatsApp number from a user's list."""
+    if current_user["email"] != email and current_user.get("role") not in [UserRole.ADMIN, UserRole.MANAGER]:
+        raise HTTPException(status_code=403, detail="Not authorized to update this user's profile")
+        
+    users_collection.update_one(
+        {"email": email},
+        {"$pull": {"whatsapp_numbers": whatsapp_number}}
+    )
+    return {
+        "status_code": 200,
+        "status": "success",
+        "message": f"WhatsApp number '{whatsapp_number}' removed from {email}",
+        "data": None
+    }
+
+@router.delete("/users/profiles/{email}/{profile_name}", response_model=ApiResponse[dict])
+def delete_profile_name(email: str, profile_name: str, current_user: dict = Depends(get_current_user)):
+    """Remove a profile name from a user's list."""
+    if current_user["email"] != email and current_user.get("role") not in [UserRole.ADMIN, UserRole.MANAGER]:
+        raise HTTPException(status_code=403, detail="Not authorized to update this user's profile")
+        
+    users_collection.update_one(
+        {"email": email},
+        {"$pull": {"profile_names": profile_name}}
+    )
+    return {
+        "status_code": 200,
+        "status": "success",
+        "message": f"Profile '{profile_name}' removed from {email}",
+        "data": None
+    }
+
 # @router.put("/users/profiles/update", response_model=ApiResponse[dict])
 # def update_profile_name(data: ProfileUpdate, current_user: dict = Depends(require_manager_or_higher)):
 #     """Update an existing profile name in a user's list."""
@@ -1603,6 +1655,51 @@ def create_client(client: ClientCreate, current_user: dict = Depends(get_current
         "data": client_dict
     }
 
+@router.get("/users/options", response_model=ApiResponse[dict])
+def get_user_options(current_user: dict = Depends(get_current_user)):
+    """
+    Returns profile_names, whatsapp_numbers, and we_chats as flat lists
+    for use as dropdown options in the frontend.
+    - Admin/Manager: aggregates across ALL employees.
+    - Employee: returns only their own assigned values.
+    """
+    if current_user["role"] == UserRole.EMPLOYEE:
+        profile_names = current_user.get("profile_names", [])
+        we_chats = current_user.get("we_chats", [])
+        whatsapp_numbers = current_user.get("whatsapp_numbers", [])
+    else:
+        employees_data = list(users_collection.find(
+            {"role": UserRole.EMPLOYEE},
+            {"profile_names": 1, "we_chats": 1, "whatsapp_numbers": 1, "_id": 0}
+        ))
+        profile_names = list({
+            p for emp in employees_data
+            if isinstance(emp.get("profile_names"), list)
+            for p in emp["profile_names"]
+        })
+        we_chats = list({
+            w for emp in employees_data
+            if isinstance(emp.get("we_chats"), list)
+            for w in emp["we_chats"]
+        })
+        whatsapp_numbers = list({
+            w for emp in employees_data
+            if isinstance(emp.get("whatsapp_numbers"), list)
+            for w in emp["whatsapp_numbers"]
+        })
+
+    return {
+        "status_code": 200,
+        "status": "success",
+        "message": "User options fetched successfully",
+        "data": {
+            "profile_names": sorted(profile_names),
+            "whatsapp_numbers": sorted(whatsapp_numbers),
+            "we_chats": sorted(we_chats)
+        }
+    }
+
+
 @router.get("/clients", response_model=ApiResponse[list[ClientResponse]])
 def get_clients(current_user: dict = Depends(get_current_user)):
     query = {}
@@ -1666,11 +1763,12 @@ def get_clients(current_user: dict = Depends(get_current_user)):
         employee_names = {current_user.get("full_name")}
         profile_names = set(current_user.get("profile_names", []))
         we_chats = set(current_user.get("we_chats", []))
+        whatsapp_numbers = set(current_user.get("whatsapp_numbers", []))
     else:
-        # Optimized retrieval of employee and profile names using projection and efficient sets
+        # Admin/Manager: fetch all employees' data
         employees_data = list(users_collection.find(
             {"role": UserRole.EMPLOYEE}, 
-            {"full_name": 1, "profile_names": 1, "we_chats": 1, "_id": 0}
+            {"full_name": 1, "profile_names": 1, "we_chats": 1, "whatsapp_numbers": 1, "_id": 0}
         ))
         employee_names = {emp["full_name"] for emp in employees_data if emp.get("full_name")}
         profile_names = {
@@ -1683,6 +1781,11 @@ def get_clients(current_user: dict = Depends(get_current_user)):
             if isinstance(emp.get("we_chats"), list) 
             for w in emp["we_chats"]
         }
+        whatsapp_numbers = {
+            w for emp in employees_data 
+            if isinstance(emp.get("whatsapp_numbers"), list) 
+            for w in emp["whatsapp_numbers"]
+        }
                 
     # Fetch order types dynamically
     order_type_setting = settings_collection.find_one({"category": SettingCategory.order_type.value})
@@ -1692,6 +1795,7 @@ def get_clients(current_user: dict = Depends(get_current_user)):
         "employee_names": list(employee_names),
         "profile_names": list(profile_names),
         "we_chats": list(we_chats),
+        "whatsapp_numbers": list(whatsapp_numbers),
         "order_type_options": order_type_options
     }
 
@@ -1803,6 +1907,41 @@ def get_client(client_id: str, current_user: dict = Depends(require_manager_or_h
         "status": "success",
         "message": "Client fetched successfully",
         "data": client_data
+    }
+
+@router.delete("/clients/{client_id}", response_model=ApiResponse[dict])
+def delete_client(client_id: str, current_user: dict = Depends(require_manager_or_higher)):
+    """
+    Delete a client and cascade delete all their orders, payments, and manuscripts.
+    Restricted to Admin and Manager.
+    """
+    client = clients_collection.find_one({"client_id": client_id})
+    if not client:
+        raise HTTPException(status_code=404, detail="Client not found")
+
+    # Delete client photo if exists
+    delete_file_if_exists(client.get("photo_path"))
+
+    # Delete receipts for orders
+    orders = list(orders_collection.find({"client_id": client_id}))
+    for order in orders:
+        for phase in (1, 2, 3):
+            delete_file_if_exists(order.get(f"receipt_phase_{phase}_path"))
+
+    # Execute cascade deletion
+    orders_result = orders_collection.delete_many({"client_id": client_id})
+    payments_result = payments_collection.delete_many({"client_id": client_id})
+    payment_history_result = payment_history_collection.delete_many({"client_id": client_id})
+    manuscripts_result = manuscripts_collection.delete_many({"client_id": client_id})
+    clients_collection.delete_one({"client_id": client_id})
+    
+    invalidate_dashboard_cache()
+
+    return {
+        "status_code": 200,
+        "status": "success",
+        "message": f"Client deleted along with {orders_result.deleted_count} orders, {payments_result.deleted_count} payments.",
+        "data": None
     }
 
 @router.post("/clients/assign", response_model=ApiResponse[ClientResponse])
@@ -2291,14 +2430,16 @@ def get_dashboard_orders(current_user: dict = Depends(get_current_user)):
             employee_names = {current_user.get("full_name")}
             profile_names = set(current_user.get("profile_names", []))
             we_chats = set(current_user.get("we_chats", []))
+            whatsapp_numbers = set(current_user.get("whatsapp_numbers", []))
         else:
             employees_data = list(users_collection.find(
                 {"role": UserRole.EMPLOYEE}, 
-                {"full_name": 1, "profile_names": 1, "we_chats": 1, "_id": 0}
+                {"full_name": 1, "profile_names": 1, "we_chats": 1, "whatsapp_numbers": 1, "_id": 0}
             ))
             employee_names = {emp["full_name"] for emp in employees_data if emp.get("full_name")}
             profile_names = {p for emp in employees_data if isinstance(emp.get("profile_names"), list) for p in emp["profile_names"]}
             we_chats = {w for emp in employees_data if isinstance(emp.get("we_chats"), list) for w in emp["we_chats"]}
+            whatsapp_numbers = {w for emp in employees_data if isinstance(emp.get("whatsapp_numbers"), list) for w in emp["whatsapp_numbers"]}
             
         settings = settings_collection.find_one({"key": "lookup_settings"}) or {}
         order_type_options = settings.get(SettingCategory.order_type.value, ORDER_TYPE_OPTIONS)
@@ -2308,6 +2449,7 @@ def get_dashboard_orders(current_user: dict = Depends(get_current_user)):
             "employee_names": list(employee_names),
             "profile_names": list(profile_names),
             "we_chats": list(we_chats),
+            "whatsapp_numbers": list(whatsapp_numbers),
             "order_type_options": order_type_options,
             "bank_account_options": bank_account_options
         }
@@ -2520,11 +2662,12 @@ def get_dashboard_orders(current_user: dict = Depends(get_current_user)):
         employee_names = {current_user.get("full_name")}
         profile_names = set(current_user.get("profile_names", []))
         we_chats = set(current_user.get("we_chats", []))
+        whatsapp_numbers = set(current_user.get("whatsapp_numbers", []))
     else:
         # Optimized retrieval of employee and profile names using projection and efficient sets
         employees_data = list(users_collection.find(
             {"role": UserRole.EMPLOYEE}, 
-            {"full_name": 1, "profile_names": 1, "we_chats": 1, "_id": 0}
+            {"full_name": 1, "profile_names": 1, "we_chats": 1, "whatsapp_numbers": 1, "_id": 0}
         ))
         employee_names = {emp["full_name"] for emp in employees_data if emp.get("full_name")}
         profile_names = {
@@ -2549,6 +2692,7 @@ def get_dashboard_orders(current_user: dict = Depends(get_current_user)):
         "employee_names": list(employee_names),
         "profile_names": list(profile_names),
         "we_chats": list(we_chats),
+            "whatsapp_numbers": list(whatsapp_numbers),
         "order_type_options": order_type_options,
         "bank_account_options": bank_account_options,
         "payment_method_options": payment_method_options

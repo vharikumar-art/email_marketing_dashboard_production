@@ -42,6 +42,7 @@ class UserBase(BaseModel):
     email: EmailStr
     full_name: Optional[str] = None
     profile_names: list[str] = Field(default_factory=list)  # Employees can maintain multiple profiles
+    whatsapp_numbers: list[str] = Field(default_factory=list)  # Employees can maintain multiple WhatsApp numbers
     we_chats: list[str] = Field(default_factory=list)  # Employees can maintain multiple WeChat accounts
     role: UserRole = UserRole.EMPLOYEE
     phone_number: Optional[str] = None
@@ -64,6 +65,7 @@ class UserCreate(UserBase):
     personal_number: Optional[str] = None           # Personal mobile number
     branch: Optional[str] = None
     profile_names: list[str] = Field(default_factory=list)
+    whatsapp_numbers: list[str] = Field(default_factory=list)
     password: str
     permissions: Optional[dict[str, list[str]]] = Field(default_factory=lambda: {"dashboard": []})
     role: UserRole = UserRole.MANAGER
@@ -87,6 +89,7 @@ class UserProfileUpdate(BaseModel):
     personal_number: Optional[str] = None
     branch: Optional[str] = None
     we_chats: Optional[list[str]] = None
+    whatsapp_numbers: Optional[list[str]] = None
 
 class UserResponse(UserBase):
     id: str = Field(..., alias="_id")
@@ -389,6 +392,7 @@ class OrderBase(BaseModel):
     reference_id: Optional[str] = None  # Unique per order — created by users (employees/admins)
 
     profile_name: Optional[str] = None # The specific profile used to handle this order
+    whatsapp_number: Optional[str] = None # The specific WhatsApp used to handle this order
     we_chat: Optional[str] = None # The specific WeChat used to handle this order
     client_ref_no: Optional[str] = None  # Optional — given by the client
     s_no: Optional[int] = None
@@ -557,6 +561,7 @@ class DashboardOrderResponse(BaseModel):
     client_handler_name: Optional[str] = None
     client_handler_phone_number: Optional[str] = None
     profile_name: Optional[str] = None
+    whatsapp_number: Optional[str] = None
     we_chat: Optional[str] = None
     receive_bank_account: Optional[str] = None
     remarks: Optional[str] = None
@@ -617,6 +622,7 @@ class DashboardUpdate(BaseModel):
     title: Optional[str] = None
     order_type: Optional[str] = None
     we_chat: Optional[str] = None
+    whatsapp_number: Optional[str] = None
     index: Optional[str] = None
     rank: Optional[str] = None
     currency: Optional[str] = None
@@ -707,6 +713,7 @@ class UnifiedCreateRequest(BaseModel):
     reference_id: Optional[str] = None
 
     profile_name: str  # From user profile
+    whatsapp_number: Optional[str] = None
     we_chat: Optional[str] = None
     title: Optional[str] = None
     order_type: Optional[str] = None  # writing | modification | proofreading

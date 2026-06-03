@@ -174,7 +174,7 @@ Email Dashboard/
 
 ### Collections Overview
 
-The database contains **8 collections** optimized with indexes for query speeds and aggregation.
+The database contains **9 collections** optimized with indexes for query speeds and aggregation.
 
 ```
 ┌──────────┐
@@ -189,11 +189,12 @@ The database contains **8 collections** optimized with indexes for query speeds 
 │ clients  │  (Client Information)
 └────┬─────┘
      │
-     ├─── submits ──→ manuscripts (1-to-Many, Optional)
-     └─── places ───→ orders (1-to-Many)
+     │ submits ── manuscripts (1-to-Many, Optional)
+     │ places ── orders (1-to-Many)
                           │
-                          ├─→ payments (1-to-1 Phase Document)
-                          └─→ payment_history (1-to-Many logs)
+                          ├─ payments (1-to-1 Phase Document)
+                          ├─ payment_history (1-to-Many logs)
+                          └─ audit_logs (1-to-Many, Tracks cell-level edits across clients, orders, payments)
 ```
 
 ### Collection Schemas & Fields
@@ -382,9 +383,25 @@ Session tracking database mapping JWTs to users.
   "created_at": ISODate("2026-05-20T11:00:00Z") // Expires automatically after 10 hours
 }
 ```
-**Indexes**: `token` (unique), `created_at` (TTL index expiring in 10 hours)
+**Indexes**: `token` (unique), `created_at` (TTL index expiring in 5 minutes)
 
-#### 8. **otps**
+#### 8. **audit_logs**
+Stores cell-level edit history across the `clients`, `orders`, and `payments` collections. Used to generate Excel-style right-click context menus on the frontend displaying the timeline of changes for specific fields.
+```javascript
+{
+  "_id": ObjectId("..."),
+  "collection_name": "orders",
+  "document_id": "ORD_123",
+  "field_name": "order_date",
+  "old_value": "2025-05-10T00:00:00",
+  "new_value": "2025-05-15T00:00:00",
+  "edited_by": "admin@example.com",
+  "edited_at": ISODate("2026-06-01T08:54:00Z")
+}
+```
+**Indexes**: `document_id`, `collection_name`, `field_name`, `edited_at`
+
+#### 9. **otps**
 Stores login OTP records.
 ```javascript
 {
@@ -658,8 +675,9 @@ IDs are formatted with a year prefix and serial index (e.g., `CL-2026-0001`). Th
 ### 3. Unified Aggregated APIs
 Endpoints `/dashboard/orders` and `/unified/create` reduce roundtrips. Instead of querying individual resources, the dashboard joins collections using MongoDB aggregation lookups.
 
-### 4. Append-Only Payment Logs
+### 4. Append-Only Payment & Audit Logs
 The `payment_history` collection captures snapshots of order totals, amounts paid, received accounts, and phase completions, building a clean transaction timeline.
+The `audit_logs` collection securely stores field-level updates (Old Value vs New Value), creating an exhaustive audit trail visible via the frontend context menu.
 
 ### 5. Filesystem Image Storage
 All binary image assets (user/client profile photos and payment receipt screenshots) are stored on the **server filesystem** under `static/uploads/`. MongoDB stores only the relative file path (e.g., `static/uploads/receipts/abc123.jpg`) rather than the binary blob. This approach:
