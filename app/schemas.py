@@ -1,5 +1,5 @@
 from pydantic import BaseModel, EmailStr, Field, field_validator
-from typing import Optional, Generic, TypeVar, Any, Union
+from typing import Optional, Generic, TypeVar, Any, Union, List
 from enum import Enum
 from datetime import datetime
 
@@ -522,7 +522,7 @@ class DashboardOrderResponse(BaseModel):
     client_id: str
     client_country: Optional[str] = None
     client_Email: Optional[str] = None
-    client_whatsapp_number: Optional[str] = None
+    profile_whatsapp_number: Optional[List[str]] = None
     reference_id: Optional[str] = None
     ref_no: Optional[str] = None
     manuscript_id: Optional[str] = None
@@ -565,6 +565,7 @@ class DashboardOrderResponse(BaseModel):
     client_handler_phone_number: Optional[str] = None
     profile_name: Optional[str] = None
     whatsapp_number: Optional[str] = None
+    whatsapp_numbers: list[str] = Field(default_factory=list)
     we_chat: Optional[str] = None
     receive_bank_account: Optional[str] = None
     remarks: Optional[str] = None
@@ -609,7 +610,8 @@ class DashboardUpdate(BaseModel):
     client_id: Optional[str] = None
     client_country: Optional[str] = None
     client_Email: Optional[str] = None
-    client_whatsapp_number: Optional[str] = None
+    profile_whatsapp_number: Optional[List[str]] = None
+    client_whatsapp_number: Optional[List[str]] = None
     client_link: Optional[str] = None
     bank_account: Optional[str] = None
     client_affiliations: Optional[str] = None

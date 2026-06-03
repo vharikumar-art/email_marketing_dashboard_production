@@ -1,4 +1,4 @@
-from typing import Optional, Any, Annotated
+﻿from typing import Optional, Any, Annotated
 from pydantic import Json
 import re
 import os
@@ -232,6 +232,7 @@ def resolve_client_handler_bulk(clients: list[dict]) -> list[dict]:
             client["client_handler_name"] = None
         return clients
 
+    # Fetch only necessary fields (exclude whatsapp_numbers)
     handlers = users_collection.find({"email": {"$in": list(emails)}}, {"email": 1, "full_name": 1, "phone_number": 1})
     email_to_handler = {handler["email"]: handler for handler in handlers}
     for client in clients:
@@ -1679,7 +1680,7 @@ def get_user_options(current_user: dict = Depends(get_current_user)):
     """
     Returns profile_names, whatsapp_numbers, and we_chats as flat lists
     for use as dropdown options in the frontend.
-    - Admin/Manager: aggregates across ALL employees.
+    - Admin/Manager: aggregates across ALL users.
     - Employee: returns only their own assigned values.
     """
     if current_user["role"] == UserRole.EMPLOYEE:
@@ -1688,7 +1689,7 @@ def get_user_options(current_user: dict = Depends(get_current_user)):
         whatsapp_numbers = current_user.get("whatsapp_numbers", [])
     else:
         employees_data = list(users_collection.find(
-            {"role": UserRole.EMPLOYEE},
+            {},
             {"profile_names": 1, "we_chats": 1, "whatsapp_numbers": 1, "_id": 0}
         ))
         profile_names = list({
@@ -2497,7 +2498,7 @@ def get_dashboard_orders(current_user: dict = Depends(get_current_user)):
             whatsapp_numbers = set(current_user.get("whatsapp_numbers", []))
         else:
             employees_data = list(users_collection.find(
-                {"role": UserRole.EMPLOYEE}, 
+                {}, 
                 {"full_name": 1, "profile_names": 1, "we_chats": 1, "whatsapp_numbers": 1, "_id": 0}
             ))
             employee_names = {emp["full_name"] for emp in employees_data if emp.get("full_name")}
@@ -2607,6 +2608,8 @@ def get_dashboard_orders(current_user: dict = Depends(get_current_user)):
                 "client_affiliations": "$affiliation",
                 "client_handler": "$client_handler",
                 "profile_name": "$order.profile_name",
+                "profile_whatsapp_number": "$order.profile_whatsapp_number",
+                "whatsapp_number": "$order.whatsapp_number",
                 "we_chat": "$order.we_chat",
                 "remarks": "$order.remarks",
                 "order_status": "$order.order_status",
@@ -2619,7 +2622,20 @@ def get_dashboard_orders(current_user: dict = Depends(get_current_user)):
     ]
     
     dashboard_data = list(clients_collection.aggregate(pipeline))
-    
+
+    if current_user["role"] == UserRole.EMPLOYEE:
+        dashboard_whatsapp_numbers = list(set(current_user.get("whatsapp_numbers", []) or []))
+    else:
+        employees_data = list(users_collection.find(
+            {"role": UserRole.EMPLOYEE},
+            {"whatsapp_numbers": 1, "_id": 0}
+        ))
+        dashboard_whatsapp_numbers = list({
+            w for emp in employees_data
+            if isinstance(emp.get("whatsapp_numbers"), list)
+            for w in emp["whatsapp_numbers"]
+        })
+
     # Resolve handler names for display in bulk
     resolve_client_handler_bulk(dashboard_data)
 
@@ -2696,6 +2712,7 @@ def get_dashboard_orders(current_user: dict = Depends(get_current_user)):
         info = photo_map.get(row.get("client_id"), {})
         row["client_photo_url"]  = info.get("photo_url")
         row["client_photo_mime"] = info.get("photo_mime")
+        row["whatsapp_numbers"] = dashboard_whatsapp_numbers
         
         # Inject receipt screenshot URLs for this order
         order_id_str = row.get("order_db_id")
@@ -2728,9 +2745,9 @@ def get_dashboard_orders(current_user: dict = Depends(get_current_user)):
         we_chats = set(current_user.get("we_chats", []))
         whatsapp_numbers = set(current_user.get("whatsapp_numbers", []))
     else:
-        # Optimized retrieval of employee and profile names using projection and efficient sets
+        # Optimized retrieval of all users for admin/manager detail options
         employees_data = list(users_collection.find(
-            {"role": UserRole.EMPLOYEE}, 
+            {}, 
             {"full_name": 1, "profile_names": 1, "we_chats": 1, "whatsapp_numbers": 1, "_id": 0}
         ))
         employee_names = {emp["full_name"] for emp in employees_data if emp.get("full_name")}
@@ -2744,7 +2761,12 @@ def get_dashboard_orders(current_user: dict = Depends(get_current_user)):
             if isinstance(emp.get("we_chats"), list) 
             for w in emp["we_chats"]
         }
-                
+        whatsapp_numbers = {
+            w for emp in employees_data 
+            if isinstance(emp.get("whatsapp_numbers"), list) 
+            for w in emp["whatsapp_numbers"]
+        }
+
     # Fetch order types dynamically
     settings = settings_collection.find_one({"key": "lookup_settings"}) or {}
     order_type_options = settings.get(SettingCategory.order_type.value, ORDER_TYPE_OPTIONS)
@@ -2788,7 +2810,7 @@ def update_dashboard_order(order_db_id: str, update_data: DashboardUpdate, curre
 
     # 2. Map fields to collections
     client_fields = ["client_name", "client_id", "client_country", "client_Email", "client_whatsapp_number", "client_link", "bank_account", "client_affiliations", "client_handler"]
-    order_fields = ["manuscript_id", "order_date", "reference_id", "ref_no", "journal_name", "title", "order_type", "we_chat", "index", "rank", "currency", "total_amount", "writing_amount", "modification_amount", "implementation_amount", "po_amount", "writing_start_date", "writing_end_date", "modification_start_date", "modification_end_date", "po_start_date", "po_end_date", "payment_status", "remarks", "order_status", "payment_drive_link", "receipt_drive_link", "receive_bank_account", "paid_amount", "clients_details", "client_details", "client_drive_link", "is_new_order"]
+    order_fields = ["manuscript_id", "order_date", "reference_id", "ref_no", "journal_name", "title", "order_type", "we_chat", "whatsapp_number", "profile_whatsapp_number", "index", "rank", "currency", "total_amount", "writing_amount", "modification_amount", "implementation_amount", "po_amount", "writing_start_date", "writing_end_date", "modification_start_date", "modification_end_date", "po_start_date", "po_end_date", "payment_status", "remarks", "order_status", "payment_drive_link", "receipt_drive_link", "receive_bank_account", "paid_amount", "clients_details", "client_details", "client_drive_link", "is_new_order"]
 
     # Map client_handler_name to client_handler email if provided
     if "client_handler_name" in update_dict:
@@ -2853,6 +2875,12 @@ def update_dashboard_order(order_db_id: str, update_data: DashboardUpdate, curre
         # Map dashboard field names back to order collection names if different
         mapped_order_updates = {}
         mapping = {"ref_no": "client_ref_no", "client_details": "clients_details"}
+
+        if "profile_whatsapp_number" in order_updates:
+            profile_numbers = order_updates["profile_whatsapp_number"]
+            if isinstance(profile_numbers, str):
+                order_updates["profile_whatsapp_number"] = [profile_numbers]
+
         for k, v in order_updates.items():
             mapped_order_updates[mapping.get(k, k)] = v
         mapped_order_updates["updated_at"] = datetime.utcnow()
