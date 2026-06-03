@@ -1262,6 +1262,24 @@ def delete_whatsapp_number(email: str, whatsapp_number: str, current_user: dict 
         "data": None
     }
 
+@router.delete("/users/we_chats/{email}/{we_chat}", response_model=ApiResponse[dict])
+def delete_we_chat(email: str, we_chat: str, current_user: dict = Depends(get_current_user)):
+    """Remove a WeChat account from a user's list."""
+    if current_user["email"] != email and current_user.get("role") not in [UserRole.ADMIN, UserRole.MANAGER]:
+        raise HTTPException(status_code=403, detail="Not authorized to update this user's profile")
+        
+    users_collection.update_one(
+        {"email": email},
+        {"$pull": {"we_chats": we_chat}}
+    )
+    return {
+        "status_code": 200,
+        "status": "success",
+        "message": f"WeChat '{we_chat}' removed from {email}",
+        "data": None
+    }
+
+
 @router.delete("/users/profiles/{email}/{profile_name}", response_model=ApiResponse[dict])
 def delete_profile_name(email: str, profile_name: str, current_user: dict = Depends(get_current_user)):
     """Remove a profile name from a user's list."""
