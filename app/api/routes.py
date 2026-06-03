@@ -36,6 +36,7 @@ from app.schemas import (
     DashboardUpdate,
     ApiResponse,
     ClientAssignRequest,
+    ClientBulkDeleteRequest,
     UnifiedCreateRequest,
     PaymentHistoryItem,
     PendingSummaryResponse,
@@ -1959,6 +1960,51 @@ def delete_client(client_id: str, current_user: dict = Depends(require_manager_o
         "status_code": 200,
         "status": "success",
         "message": f"Client deleted along with {orders_result.deleted_count} orders, {payments_result.deleted_count} payments.",
+        "data": None
+    }
+
+@router.post("/clients/bulk-delete", response_model=ApiResponse[dict])
+def bulk_delete_clients(request: ClientBulkDeleteRequest, current_user: dict = Depends(require_manager_or_higher)):
+    """
+    Bulk delete clients and cascade delete all their orders, payments, and manuscripts.
+    Restricted to Admin and Manager.
+    """
+    deleted_clients = 0
+    deleted_orders = 0
+    deleted_payments = 0
+
+    for client_id in request.client_ids:
+        client = clients_collection.find_one({"client_id": client_id})
+        if not client:
+            continue
+
+        # Delete client photo if exists
+        delete_file_if_exists(client.get("photo_path"))
+
+        # Delete receipts for orders
+        orders = list(orders_collection.find({"client_id": client_id}))
+        for order in orders:
+            for phase in (1, 2, 3):
+                delete_file_if_exists(order.get(f"receipt_phase_{phase}_path"))
+
+        # Execute cascade deletion
+        o_res = orders_collection.delete_many({"client_id": client_id})
+        p_res = payments_collection.delete_many({"client_id": client_id})
+        payment_history_collection.delete_many({"client_id": client_id})
+        manuscripts_collection.delete_many({"client_id": client_id})
+        clients_collection.delete_one({"client_id": client_id})
+
+        deleted_clients += 1
+        deleted_orders += o_res.deleted_count
+        deleted_payments += p_res.deleted_count
+        
+    if deleted_clients > 0:
+        invalidate_dashboard_cache()
+
+    return {
+        "status_code": 200,
+        "status": "success",
+        "message": f"Successfully deleted {deleted_clients} clients, {deleted_orders} orders, and {deleted_payments} payments.",
         "data": None
     }
 

@@ -370,6 +370,9 @@ class ClientFullResponse(ClientBase):
 class ClientAssignRequest(BaseModel):
     client_id: str
     employee_email: EmailStr
+    
+class ClientBulkDeleteRequest(BaseModel):
+    client_ids: list[str]
 
 class ManuscriptBase(BaseModel):
     manuscript_id: str
