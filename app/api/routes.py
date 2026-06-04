@@ -1,4 +1,4 @@
-﻿from typing import Optional, Any, Annotated
+from typing import Optional, Any, Annotated
 from pydantic import Json
 import re
 import os
@@ -7,6 +7,7 @@ from email.message import EmailMessage
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, status, Form, File, UploadFile, Response
+from fastapi.responses import ORJSONResponse
 from bson import ObjectId
 from bson.binary import Binary
 
@@ -1482,7 +1483,16 @@ def get_user_dashboard_data(client_match: dict):
     
     clients_with_stats = list(clients_collection.aggregate(pipeline))
     
-    country_stats_map = {}
+    from collections import defaultdict
+    country_stats_map = defaultdict(lambda: {
+        "country_name": "",
+        "client_count": 0,
+        "order_count": 0,
+        "paid_count": 0,
+        "paid_amount": 0.0,
+        "pending_count": 0,
+        "reject_count": 0
+    })
     order_status_details = []
     
     total_system_amount = 0.0
@@ -1493,44 +1503,46 @@ def get_user_dashboard_data(client_match: dict):
     
     for c in clients_with_stats:
         country = c.get("country") or "Unknown"
-        if country not in country_stats_map:
-            country_stats_map[country] = {
-                "country_name": country,
-                "client_count": 0,
-                "order_count": 0,
-                "paid_count": 0,
-                "paid_amount": 0.0,
-                "pending_count": 0,
-                "reject_count": 0
-            }
+        stats = country_stats_map[country]
+        stats["country_name"] = country
+        stats["client_count"] += 1
         
-        country_stats_map[country]["client_count"] += 1
-        country_stats_map[country]["order_count"] += c.get("order_count", 0)
-        country_stats_map[country]["paid_count"] += c.get("paid_order_count", 0)
-        country_stats_map[country]["paid_amount"] = round(country_stats_map[country]["paid_amount"] + c.get("paid_amount", 0.0), 2)
-        country_stats_map[country]["pending_count"] += c.get("pending_order_count", 0)
-        country_stats_map[country]["reject_count"] += c.get("reject_order_count", 0)
+        c_order_count = c.get("order_count", 0)
+        c_paid_order_count = c.get("paid_order_count", 0)
+        c_paid_amount = c.get("paid_amount", 0.0)
+        c_pending_order_count = c.get("pending_order_count", 0)
+        c_reject_order_count = c.get("reject_order_count", 0)
+        c_total_amount = c.get("total_amount", 0.0)
         
-        for order in c.get("orders_list", []):
-            order_status_details.append({
-                "client_name": c.get("name"),
-                "client_id": order.get("client_id"),
-                "reference_id": order.get("reference_id"),
-                "order_status": order.get("order_status"),
-                "payment_status": order.get("payment_status"),
-                "country": c.get("country"),        
-                "total_amount": round(order.get("total_amount", 0.0), 2),
-                "paid_amount": round(order.get("paid_amount", 0.0), 2),
-                "is_new_order": order.get("is_new_order", "yes"),
-                "created_at": order.get("created_at"),
-                "order_date": order.get("order_date")
-            })
+        stats["order_count"] += c_order_count
+        stats["paid_count"] += c_paid_order_count
+        stats["paid_amount"] = round(stats["paid_amount"] + c_paid_amount, 2)
+        stats["pending_count"] += c_pending_order_count
+        stats["reject_count"] += c_reject_order_count
+        
+        c_name = c.get("name")
+        c_country = c.get("country")
+        
+        # Batch append to avoid constant resizing if possible
+        order_status_details.extend({
+            "client_name": c_name,
+            "client_id": order.get("client_id"),
+            "reference_id": order.get("reference_id"),
+            "order_status": order.get("order_status"),
+            "payment_status": order.get("payment_status"),
+            "country": c_country,
+            "total_amount": round(order.get("total_amount", 0.0), 2),
+            "paid_amount": round(order.get("paid_amount", 0.0), 2),
+            "is_new_order": order.get("is_new_order", "yes"),
+            "created_at": order.get("created_at"),
+            "order_date": order.get("order_date")
+        } for order in c.get("orders_list", []))
             
-        total_system_amount += c.get("total_amount", 0.0)
-        total_system_paid += c.get("paid_amount", 0.0)
-        total_system_orders += c.get("order_count", 0)
-        total_system_pending += c.get("pending_order_count", 0)
-        total_system_rejects += c.get("reject_order_count", 0)
+        total_system_amount += c_total_amount
+        total_system_paid += c_paid_amount
+        total_system_orders += c_order_count
+        total_system_pending += c_pending_order_count
+        total_system_rejects += c_reject_order_count
 
     total_clients_count = len(clients_with_stats)
     pending_pct = (total_system_pending / total_system_orders * 100) if total_system_orders > 0 else 0.0
@@ -2608,7 +2620,8 @@ def get_dashboard_orders(current_user: dict = Depends(get_current_user)):
                 "client_affiliations": "$affiliation",
                 "client_handler": "$client_handler",
                 "profile_name": "$order.profile_name",
-                "profile_whatsapp_number": "$order.profile_whatsapp_number",
+                # orders.whatsapp_number = the employee profile WA used for this order
+                "profile_whatsapp_number": "$order.whatsapp_number",
                 "whatsapp_number": "$order.whatsapp_number",
                 "we_chat": "$order.we_chat",
                 "remarks": "$order.remarks",
@@ -2621,20 +2634,30 @@ def get_dashboard_orders(current_user: dict = Depends(get_current_user)):
         }
     ]
     
-    dashboard_data = list(clients_collection.aggregate(pipeline))
-
-    if current_user["role"] == UserRole.EMPLOYEE:
-        dashboard_whatsapp_numbers = list(set(current_user.get("whatsapp_numbers", []) or []))
-    else:
-        employees_data = list(users_collection.find(
-            {"role": UserRole.EMPLOYEE},
-            {"whatsapp_numbers": 1, "_id": 0}
-        ))
-        dashboard_whatsapp_numbers = list({
-            w for emp in employees_data
-            if isinstance(emp.get("whatsapp_numbers"), list)
-            for w in emp["whatsapp_numbers"]
-        })
+    from concurrent.futures import ThreadPoolExecutor
+    
+    dashboard_whatsapp_numbers = []
+    
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        future_dashboard = executor.submit(lambda: list(clients_collection.aggregate(pipeline)))
+        
+        if current_user["role"] == UserRole.EMPLOYEE:
+            dashboard_whatsapp_numbers = list(set(current_user.get("whatsapp_numbers", []) or []))
+            dashboard_data = future_dashboard.result()
+        else:
+            future_employees = executor.submit(
+                lambda: list(users_collection.find(
+                    {"role": UserRole.EMPLOYEE},
+                    {"whatsapp_numbers": 1, "_id": 0}
+                ))
+            )
+            dashboard_data = future_dashboard.result()
+            employees_data = future_employees.result()
+            dashboard_whatsapp_numbers = list({
+                w for emp in employees_data
+                if isinstance(emp.get("whatsapp_numbers"), list)
+                for w in emp["whatsapp_numbers"]
+            })
 
     # Resolve handler names for display in bulk
     resolve_client_handler_bulk(dashboard_data)
@@ -2809,8 +2832,21 @@ def update_dashboard_order(order_db_id: str, update_data: DashboardUpdate, curre
         }
 
     # 2. Map fields to collections
-    client_fields = ["client_name", "client_id", "client_country", "client_Email", "client_whatsapp_number", "client_link", "bank_account", "client_affiliations", "client_handler"]
-    order_fields = ["manuscript_id", "order_date", "reference_id", "ref_no", "journal_name", "title", "order_type", "we_chat", "whatsapp_number", "profile_whatsapp_number", "index", "rank", "currency", "total_amount", "writing_amount", "modification_amount", "implementation_amount", "po_amount", "writing_start_date", "writing_end_date", "modification_start_date", "modification_end_date", "po_start_date", "po_end_date", "payment_status", "remarks", "order_status", "payment_drive_link", "receipt_drive_link", "receive_bank_account", "paid_amount", "clients_details", "client_details", "client_drive_link", "is_new_order"]
+    # CLIENT fields — all whatsapp variants here go to clients_collection.whatsapp_no
+    client_fields = ["client_name", "client_id", "client_country", "client_Email",
+                     "client_whatsapp_number", "client_whatsapp_no", "whatsapp_no",
+                     "client_link", "bank_account", "client_affiliations", "client_handler"]
+    # ORDER fields — profile_whatsapp_number goes to orders_collection.whatsapp_number
+    # NOTE: plain 'whatsapp_number' is NOT in client_fields, so it will ONLY update the order
+    order_fields = ["manuscript_id", "order_date", "reference_id", "ref_no", "journal_name",
+                    "title", "order_type", "we_chat", "whatsapp_number", "profile_whatsapp_number",
+                    "index", "rank", "currency", "total_amount", "writing_amount",
+                    "modification_amount", "implementation_amount", "po_amount",
+                    "writing_start_date", "writing_end_date", "modification_start_date",
+                    "modification_end_date", "po_start_date", "po_end_date", "payment_status",
+                    "remarks", "order_status", "payment_drive_link", "receipt_drive_link",
+                    "receive_bank_account", "paid_amount", "clients_details", "client_details",
+                    "client_drive_link", "is_new_order"]
 
     # Map client_handler_name to client_handler email if provided
     if "client_handler_name" in update_dict:
@@ -2843,18 +2879,22 @@ def update_dashboard_order(order_db_id: str, update_data: DashboardUpdate, curre
         
         # Map dashboard field names back to client collection names
         mapped_client_updates = {}
-        mapping = {
+        # All three whatsapp variants from the client form map to whatsapp_no in the clients collection
+        client_field_mapping = {
             "client_name": "name",
             "client_id": "client_id",
             "client_country": "country",
             "client_Email": "email",
-            "client_whatsapp_number": "whatsapp_no",
+            "client_whatsapp_number": "whatsapp_no",   # frontend key → DB key
+            "client_whatsapp_no": "whatsapp_no",       # alternate frontend key
+            "whatsapp_no": "whatsapp_no",              # direct key
             "client_link": "client_link",
             "bank_account": "bank_account",
             "client_affiliations": "affiliation"
         }
         for k, v in client_updates.items():
-            mapped_client_updates[mapping.get(k, k)] = v
+            db_key = client_field_mapping.get(k, k)
+            mapped_client_updates[db_key] = v
 
         # Update the client record
         clients_collection.update_one({"client_id": old_client_id}, {"$set": mapped_client_updates})
@@ -2872,17 +2912,20 @@ def update_dashboard_order(order_db_id: str, update_data: DashboardUpdate, curre
     # Update Orders
     order_updates = {f: update_dict[f] for f in order_fields if f in update_dict}
     if order_updates:
-        # Map dashboard field names back to order collection names if different
+        # Map dashboard field names back to order collection field names
+        # IMPORTANT: profile_whatsapp_number (frontend) → whatsapp_number (orders DB)
+        #            This is kept COMPLETELY separate from client's whatsapp_no field.
         mapped_order_updates = {}
-        mapping = {"ref_no": "client_ref_no", "client_details": "clients_details"}
-
-        if "profile_whatsapp_number" in order_updates:
-            profile_numbers = order_updates["profile_whatsapp_number"]
-            if isinstance(profile_numbers, str):
-                order_updates["profile_whatsapp_number"] = [profile_numbers]
+        order_field_mapping = {
+            "ref_no": "client_ref_no",
+            "client_details": "clients_details",
+            "profile_whatsapp_number": "whatsapp_number",  # Profile WA → orders.whatsapp_number
+        }
 
         for k, v in order_updates.items():
-            mapped_order_updates[mapping.get(k, k)] = v
+            db_key = order_field_mapping.get(k, k)
+            mapped_order_updates[db_key] = v
+
         mapped_order_updates["updated_at"] = datetime.utcnow()
         orders_collection.update_one({"_id": ObjectId(order_db_id)}, {"$set": mapped_order_updates})
         record_audit_log(str(order_db_id), "orders", order, mapped_order_updates, current_user["email"])

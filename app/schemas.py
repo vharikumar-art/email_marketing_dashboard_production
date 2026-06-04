@@ -522,7 +522,8 @@ class DashboardOrderResponse(BaseModel):
     client_id: str
     client_country: Optional[str] = None
     client_Email: Optional[str] = None
-    profile_whatsapp_number: Optional[List[str]] = None
+    client_whatsapp_number: Optional[str] = None   # Client's own WhatsApp (clients_collection.whatsapp_no)
+    profile_whatsapp_number: Optional[str] = None   # Employee profile WhatsApp used for this order
     reference_id: Optional[str] = None
     ref_no: Optional[str] = None
     manuscript_id: Optional[str] = None
@@ -610,8 +611,10 @@ class DashboardUpdate(BaseModel):
     client_id: Optional[str] = None
     client_country: Optional[str] = None
     client_Email: Optional[str] = None
-    profile_whatsapp_number: Optional[List[str]] = None
-    client_whatsapp_number: Optional[List[str]] = None
+    profile_whatsapp_number: Optional[str] = None
+    client_whatsapp_number: Optional[str] = None
+    client_whatsapp_no: Optional[str] = None
+    whatsapp_no: Optional[str] = None
     client_link: Optional[str] = None
     bank_account: Optional[str] = None
     client_affiliations: Optional[str] = None

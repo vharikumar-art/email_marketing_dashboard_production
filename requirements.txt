@@ -12,3 +12,4 @@ cachetools>=5.3.0
 redis>=4.5.0
 aiosmtplib>=2.0.0
 gunicorn>=23.0.0
+orjson>=3.9.0
