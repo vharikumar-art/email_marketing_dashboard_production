@@ -1633,6 +1633,21 @@ def get_user_details(email: str, current_user: dict = Depends(require_manager_or
 
 # --- CLIENTS ---
 
+@router.get("/clients/next-ids", response_model=ApiResponse[dict])
+def get_next_client_and_ref_ids(current_user: dict = Depends(get_current_user)):
+    next_client_id = generate_custom_id("CL", clients_collection, current_user)
+    next_ref_id = generate_custom_id("REF", orders_collection, current_user)
+    return {
+        "status_code": 200,
+        "status": "success",
+        "message": "Next auto-generated IDs fetched successfully",
+        "data": {
+            "next_client_id": next_client_id,
+            "next_reference_id": next_ref_id
+        }
+    }
+
+
 @router.post("/clients", response_model=ApiResponse[ClientResponse], status_code=status.HTTP_201_CREATED)
 def create_client(client: ClientCreate, current_user: dict = Depends(get_current_user)):
     # Auto-generate client_id if not provided
