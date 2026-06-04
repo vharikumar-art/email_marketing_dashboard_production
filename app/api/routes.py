@@ -1751,25 +1751,11 @@ def get_clients(current_user: dict = Depends(get_current_user)):
         },
         {
             "$addFields": {
-                "order_type": {
-                    "$reduce": {
-                        "input": {
-                            "$setUnion": {
-                                "$filter": {
-                                    "input": "$client_orders.order_type",
-                                    "as": "ot",
-                                    "cond": { "$and": [ { "$ne": ["$$ot", None] }, { "$ne": ["$$ot", ""] } ] }
-                                }
-                            }
-                        },
-                        "initialValue": "",
-                        "in": {
-                            "$cond": [
-                                { "$eq": ["$$value", ""] },
-                                "$$this",
-                                { "$concat": ["$$value", ", ", "$$this"] }
-                            ]
-                        }
+                "order_type_list": {
+                    "$filter": {
+                        "input": "$client_orders.order_type",
+                        "as": "ot",
+                        "cond": { "$and": [ { "$ne": ["$$ot", None] }, { "$ne": ["$$ot", ""] } ] }
                     }
                 },
                 "order_id_db": {
@@ -1783,8 +1769,19 @@ def get_clients(current_user: dict = Depends(get_current_user)):
         },
         {"$project": {"client_orders": 0}}
     ]
+    clients_raw = list(clients_collection.aggregate(pipeline))
     
-    clients = [format_mongo_id(c) for c in clients_collection.aggregate(pipeline)]
+    for c in clients_raw:
+        ot_list = c.pop("order_type_list", [])
+        if ot_list:
+            counts = {}
+            for ot in ot_list:
+                counts[ot] = counts.get(ot, 0) + 1
+            c["order_type"] = ", ".join([f"{k} : {v}" for k, v in counts.items()])
+        else:
+            c["order_type"] = ""
+
+    clients = [format_mongo_id(c) for c in clients_raw]
     resolved = resolve_client_handler_bulk(clients)
     
     for c in resolved:
