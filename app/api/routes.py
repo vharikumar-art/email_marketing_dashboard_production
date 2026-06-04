@@ -3054,7 +3054,7 @@ def create_unified_record(
                 content = client_photo.file.read()
                 mime = client_photo.content_type or "image/png"
                 photo_path = save_bytes_to_file(content, mime, "clients")
-                client_data["photo_url"] = photo_path
+                client_data["photo_path"] = photo_path
                 client_data["photo_mime"] = mime
                 client_data["has_photo"] = True
             except Exception as e:
@@ -3069,7 +3069,7 @@ def create_unified_record(
                 content = base64.b64decode(photo_b64)
                 mime = request.client_photo_mime or "image/png"
                 photo_path = save_bytes_to_file(content, mime, "clients")
-                client_data["photo_url"] = photo_path
+                client_data["photo_path"] = photo_path
                 client_data["photo_mime"] = mime
                 client_data["has_photo"] = True
             except Exception as e:
