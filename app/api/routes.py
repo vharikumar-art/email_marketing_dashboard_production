@@ -1066,8 +1066,9 @@ async def upload_receipt_screenshot(
     current_user: dict = Depends(require_manager_or_higher)
 ):
     """
-    Upload a payment receipt screenshot for an order phase (1, 2, or 3).
-    - Validates image MIME type, enforces 2 MB size limit
+    Upload a payment receipt screenshot/document for an order phase (1, 2, or 3).
+    - Accepts images (png, jpg, etc.), PDFs, and Word docs
+    - Enforces 10 MB size limit
     - Saves file to static/uploads/receipts/ and stores path in orders collection
     - Clears dashboard cache after successful upload
     """
@@ -1077,13 +1078,19 @@ async def upload_receipt_screenshot(
     if phase not in (1, 2, 3):
         raise HTTPException(status_code=400, detail="Phase must be 1, 2, or 3")
     
-    # Validate image
-    if not file.content_type.startswith("image/"):
-        raise HTTPException(status_code=400, detail="File must be an image")
+    # Validate file type — allow images, PDFs, and Word documents
+    allowed_types = (
+        "image/",
+        "application/pdf",
+        "application/msword",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    )
+    if not any(file.content_type.startswith(t) for t in allowed_types):
+        raise HTTPException(status_code=400, detail="File must be an image, PDF, or Word document")
     
     content = await file.read()
-    if len(content) > 2 * 1024 * 1024:  # 2MB limit
-        raise HTTPException(status_code=400, detail="Image size must be less than 2MB")
+    if len(content) > 10 * 1024 * 1024:  # 10MB limit
+        raise HTTPException(status_code=400, detail="File size must be less than 10MB")
     
     # Verify order exists
     try:
