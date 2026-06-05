@@ -544,6 +544,8 @@ class DashboardOrderResponse(BaseModel):
     modification_end_date: Optional[datetime] = None
     po_start_date: Optional[datetime] = None
     po_end_date: Optional[datetime] = None
+    implementation_start_date: Optional[datetime] = None
+    implementation_end_date: Optional[datetime] = None
     phase: Optional[int] = None
     phase_1_payment: float = 0.0
     phase_1_payment_date: Optional[datetime] = None
@@ -646,6 +648,8 @@ class DashboardUpdate(BaseModel):
     modification_end_date: Optional[datetime] = None
     po_start_date: Optional[datetime] = None
     po_end_date: Optional[datetime] = None
+    implementation_start_date: Optional[datetime] = None
+    implementation_end_date: Optional[datetime] = None
     payment_status: Optional[str] = None
     remarks: Optional[str] = None
     client_order_type: Optional[str] = None

@@ -2615,6 +2615,8 @@ def get_dashboard_orders(current_user: dict = Depends(get_current_user)):
                 "modification_end_date": "$order.modification_end_date",
                 "po_start_date": "$order.po_start_date",
                 "po_end_date": "$order.po_end_date",
+                "implementation_start_date": "$order.implementation_start_date",
+                "implementation_end_date": "$order.implementation_end_date",
                 "phase": {"$literal": None},
                 # All phase fields live in a single payment doc per order â€” read directly
                 "phase_1_payment": {"$arrayElemAt": ["$p_list.phase_1_payment", 0]},
@@ -2860,7 +2862,8 @@ def update_dashboard_order(order_db_id: str, update_data: DashboardUpdate, curre
                     "index", "rank", "currency", "total_amount", "writing_amount",
                     "modification_amount", "implementation_amount", "po_amount",
                     "writing_start_date", "writing_end_date", "modification_start_date",
-                    "modification_end_date", "po_start_date", "po_end_date", "payment_status",
+                    "modification_end_date", "po_start_date", "po_end_date", 
+                    "implementation_start_date", "implementation_end_date", "payment_status",
                     "remarks", "order_status", "payment_drive_link", "receipt_drive_link",
                     "receive_bank_account", "paid_amount", "clients_details", "client_details",
                     "client_drive_link", "is_new_order"]
