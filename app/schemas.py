@@ -622,6 +622,7 @@ class DashboardUpdate(BaseModel):
     
     
     # ORDER FIELDS
+    order_id: Optional[str] = None
     manuscript_id: Optional[str] = None
     order_date: Optional[datetime] = None
     reference_id: Optional[str] = None

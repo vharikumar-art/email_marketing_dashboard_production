@@ -1110,13 +1110,19 @@ async def upload_receipt_screenshot(
     receipt_path = await save_upload_file(file, "receipts")
 
     # Store receipt path in DB
+    updates = {
+        f"receipt_phase_{phase}_path": receipt_path,
+        f"receipt_phase_{phase}_mime": file.content_type
+    }
     orders_collection.update_one(
         {"_id": ObjectId(order_db_id)},
-        {"$set": {
-            f"receipt_phase_{phase}_path": receipt_path,
-            f"receipt_phase_{phase}_mime": file.content_type
-        }}
+        {"$set": updates}
     )
+    
+    # Log with the exact field name the frontend requests
+    log_updates = {f"phase_{phase}_receipt": receipt_path}
+    log_old = {f"phase_{phase}_receipt": order.get(f"receipt_phase_{phase}_path")}
+    record_audit_log(str(order_db_id), "orders", log_old, log_updates, current_user.get("email", "unknown"))
     
     # Clear cache
     clear_dashboard_cache()
@@ -1190,6 +1196,11 @@ def delete_receipt_screenshot(
             f"receipt_phase_{phase}_mime": ""
         }}
     )
+    
+    # Log with the exact field name the frontend requests
+    log_updates = {f"phase_{phase}_receipt": None}
+    log_old = {f"phase_{phase}_receipt": order.get(f"receipt_phase_{phase}_path")}
+    record_audit_log(str(order_db_id), "orders", log_old, log_updates, current_user.get("email", "unknown"))
     
     # Clear cache
     clear_dashboard_cache()
@@ -2844,7 +2855,7 @@ def update_dashboard_order(order_db_id: str, update_data: DashboardUpdate, curre
                      "client_link", "bank_account", "client_affiliations", "client_handler"]
     # ORDER fields — profile_whatsapp_number goes to orders_collection.whatsapp_number
     # NOTE: plain 'whatsapp_number' is NOT in client_fields, so it will ONLY update the order
-    order_fields = ["manuscript_id", "order_date", "reference_id", "ref_no", "journal_name",
+    order_fields = ["order_id", "manuscript_id", "order_date", "reference_id", "ref_no", "journal_name",
                     "title", "order_type", "we_chat", "whatsapp_number", "profile_whatsapp_number",
                     "index", "rank", "currency", "total_amount", "writing_amount",
                     "modification_amount", "implementation_amount", "po_amount",
@@ -2932,6 +2943,16 @@ def update_dashboard_order(order_db_id: str, update_data: DashboardUpdate, curre
             db_key = order_field_mapping.get(k, k)
             mapped_order_updates[db_key] = v
 
+        new_order_id = mapped_order_updates.get("order_id")
+        if new_order_id and new_order_id != order.get("order_id"):
+            if orders_collection.find_one({"order_id": new_order_id}):
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Order ID '{new_order_id}' already exists")
+
+        new_reference_id = mapped_order_updates.get("reference_id")
+        if new_reference_id and new_reference_id != order.get("reference_id"):
+            if orders_collection.find_one({"reference_id": new_reference_id}):
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Reference ID '{new_reference_id}' already exists")
+
         mapped_order_updates["updated_at"] = datetime.utcnow()
         orders_collection.update_one({"_id": ObjectId(order_db_id)}, {"$set": mapped_order_updates})
         record_audit_log(str(order_db_id), "orders", order, mapped_order_updates, current_user["email"])
@@ -2945,7 +2966,7 @@ def update_dashboard_order(order_db_id: str, update_data: DashboardUpdate, curre
             upsert=True
         )
         if payment_doc:
-            record_audit_log(str(payment_doc.get("_id", order_custom_id)), "payments", payment_doc, payment_updates_raw, current_user["email"])
+            record_audit_log(str(order_db_id), "payments", payment_doc, payment_updates_raw, current_user["email"])
         
     # Sync with payment_history_collection if order, client, or payment fields were updated
     if client_updates or order_updates or payment_updates_raw:
