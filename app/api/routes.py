@@ -2926,6 +2926,10 @@ def update_dashboard_order(order_db_id: str, update_data: DashboardUpdate, curre
             orders_collection.update_many({"client_id": old_client_id}, {"$set": {"client_id": new_client_id}})
             payments_collection.update_many({"client_id": old_client_id}, {"$set": {"client_id": new_client_id}})
             manuscripts_collection.update_many({"client_id": old_client_id}, {"$set": {"client_id": new_client_id}})
+            
+            # Ripple to audit logs so history isn't lost for the client
+            audit_logs_collection.update_many({"document_id": old_client_id, "collection_name": "clients"}, {"$set": {"document_id": new_client_id}})
+            
             # Update local variable for subsequent order updates in this same request
             old_client_id = new_client_id
 
