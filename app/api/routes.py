@@ -2859,7 +2859,7 @@ def update_dashboard_order(order_db_id: str, update_data: DashboardUpdate, curre
     # NOTE: plain 'whatsapp_number' is NOT in client_fields, so it will ONLY update the order
     order_fields = ["order_id", "manuscript_id", "order_date", "reference_id", "ref_no", "journal_name",
                     "title", "order_type", "we_chat", "whatsapp_number", "profile_whatsapp_number",
-                    "index", "rank", "currency", "total_amount", "writing_amount",
+                    "profile_name", "index", "rank", "currency", "total_amount", "writing_amount",
                     "modification_amount", "implementation_amount", "po_amount",
                     "writing_start_date", "writing_end_date", "modification_start_date",
                     "modification_end_date", "po_start_date", "po_end_date", 

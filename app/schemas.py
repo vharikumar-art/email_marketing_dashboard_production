@@ -632,6 +632,7 @@ class DashboardUpdate(BaseModel):
     journal_name: Optional[str] = None
     title: Optional[str] = None
     order_type: Optional[str] = None
+    profile_name: Optional[str] = None
     we_chat: Optional[str] = None
     whatsapp_number: Optional[str] = None
     index: Optional[str] = None
