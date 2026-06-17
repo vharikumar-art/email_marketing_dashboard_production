@@ -6,7 +6,7 @@ import random
 from email.message import EmailMessage
 from datetime import datetime, timedelta
 
-from fastapi import APIRouter, Depends, HTTPException, status, Form, File, UploadFile, Response
+from fastapi import APIRouter, Depends, HTTPException, status, Form, File, UploadFile, Response, Query
 from fastapi.responses import ORJSONResponse
 from bson import ObjectId
 from bson.binary import Binary
@@ -2508,7 +2508,21 @@ def delete_bank_account(account_id: str, current_user: dict = Depends(require_ma
 # --- DASHBOARD ---
 
 @router.get("/dashboard/orders", response_model=ApiResponse[list[DashboardOrderResponse]])
-def get_dashboard_orders(current_user: dict = Depends(get_current_user)):
+def get_dashboard_orders(
+    page: int = Query(1, ge=1),
+    limit: int = Query(15, ge=1, le=100),
+    search: Optional[str] = Query(None),
+    payment_status: Optional[str] = Query(None),
+    order_status: Optional[str] = Query(None),
+    rank: Optional[str] = Query(None),
+    index: Optional[str] = Query(None),
+    client_country: Optional[str] = Query(None),
+    client_handler_name: Optional[str] = Query(None),
+    is_new_order: Optional[str] = Query(None),
+    order_type: Optional[str] = Query(None),
+    we_chat: Optional[str] = Query(None),
+    current_user: dict = Depends(get_current_user)
+):
     """
     Unified endpoint for the frontend dashboard.
     Optimized with MongoDB Aggregation Pipeline ($lookup + $unwind).
@@ -2518,8 +2532,64 @@ def get_dashboard_orders(current_user: dict = Depends(get_current_user)):
     cache_key = dashboard_cache_key(current_user.get("email", "anonymous"), current_user.get("role", "unknown"))
     cached_data = cache_manager.get(cache_key)
     
+    def _filter_and_paginate(data_list):
+        filter_options = {
+            "payment_status": sorted(list(set(str(r.get("payment_status", "")).strip().upper() for r in data_list if str(r.get("payment_status", "")).strip()))),
+            "order_status": sorted(list(set(str(r.get("order_status", "")).strip().upper() for r in data_list if str(r.get("order_status", "")).strip()))),
+            "rank": sorted(list(set(str(r.get("rank", "")).strip().upper() for r in data_list if str(r.get("rank", "")).strip()))),
+            "index": sorted(list(set(str(r.get("index", "")).strip().upper() for r in data_list if str(r.get("index", "")).strip()))),
+            "client_country": sorted(list(set(str(r.get("client_country", "")).strip().upper() for r in data_list if str(r.get("client_country", "")).strip()))),
+            "client_handler_name": sorted(list(set(str(r.get("client_handler_name", "")).strip().upper() for r in data_list if str(r.get("client_handler_name", "")).strip()))),
+            "is_new_order": sorted(list(set(str(r.get("is_new_order", "")).strip().upper() for r in data_list if str(r.get("is_new_order", "")).strip()))),
+            "order_type": sorted(list(set(str(r.get("order_type", "")).strip().upper() for r in data_list if str(r.get("order_type", "")).strip()))),
+            "we_chat": sorted(list(set(str(r.get("we_chat", "")).strip().upper() for r in data_list if str(r.get("we_chat", "")).strip())))
+        }
+
+        filtered = []
+        s = search.lower() if search else None
+        
+        for row in data_list:
+            if s:
+                search_fields = [
+                    str(row.get("client_name", "")),
+                    str(row.get("client_id", "")),
+                    str(row.get("order_id", "")),
+                    str(row.get("reference_id", "")),
+                    str(row.get("journal_name", "")),
+                    str(row.get("title", ""))
+                ]
+                if not any(s in sf.lower() for sf in search_fields if sf):
+                    continue
+            
+            if payment_status and str(row.get("payment_status", "")).strip().lower() != payment_status.strip().lower(): continue
+            if order_status and str(row.get("order_status", "")).strip().lower() != order_status.strip().lower(): continue
+            if rank and str(row.get("rank", "")).strip().lower() != rank.strip().lower(): continue
+            if index and str(row.get("index", "")).strip().lower() != index.strip().lower(): continue
+            if client_country and str(row.get("client_country", "")).strip().lower() != client_country.strip().lower(): continue
+            if client_handler_name and str(row.get("client_handler_name", "")).strip().lower() != client_handler_name.strip().lower(): continue
+            if is_new_order and str(row.get("is_new_order", "")).strip().lower() != is_new_order.strip().lower(): continue
+            if order_type and str(row.get("order_type", "")).strip().lower() != order_type.strip().lower(): continue
+            if we_chat and str(row.get("we_chat", "")).strip().lower() != we_chat.strip().lower(): continue
+            
+            filtered.append(row)
+            
+        total_items = len(filtered)
+        total_pages = (total_items + limit - 1) // limit if limit > 0 else 0
+        skip = (page - 1) * limit
+        paginated = filtered[skip : skip + limit]
+        
+        pagination_meta = {
+            "current_page": page,
+            "limit": limit,
+            "total_items": total_items,
+            "total_pages": total_pages,
+            "has_next": page < total_pages,
+            "has_prev": page > 1
+        }
+        return paginated, pagination_meta, filter_options
+    
     # Helper to build detail
-    def _build_dashboard_detail():
+    def _build_dashboard_detail(filter_options=None):
         if current_user["role"] == UserRole.EMPLOYEE:
             employee_names = {current_user.get("full_name")}
             profile_names = set(current_user.get("profile_names", []))
@@ -2545,16 +2615,19 @@ def get_dashboard_orders(current_user: dict = Depends(get_current_user)):
             "we_chats": list(we_chats),
             "whatsapp_numbers": list(whatsapp_numbers),
             "order_type_options": order_type_options,
-            "bank_account_options": bank_account_options
+            "bank_account_options": bank_account_options,
+            "filter_options": filter_options or {}
         }
 
     if cached_data is not None:
+        paginated_data, pagination_meta, filter_opts = _filter_and_paginate(cached_data)
         return {
             "status_code": 200,
             "status": "success",
             "message": "Dashboard data fetched successfully",
-            "data": cached_data,
-            "detail": _build_dashboard_detail()
+            "data": paginated_data,
+            "pagination": pagination_meta,
+            "detail": _build_dashboard_detail(filter_opts)
         }
 
     # 1. Get filtered clients query
@@ -2826,12 +2899,15 @@ def get_dashboard_orders(current_user: dict = Depends(get_current_user)):
         "payment_method_options": payment_method_options
     }
 
+    paginated_data, pagination_meta, filter_opts = _filter_and_paginate(dashboard_data)
+
     return {
         "status_code": 200,
         "status": "success",
         "message": "Dashboard data fetched successfully",
-        "data": dashboard_data,
-        "detail": detail
+        "data": paginated_data,
+        "pagination": pagination_meta,
+        "detail": _build_dashboard_detail(filter_opts)
     }
 
 @router.patch("/dashboard/orders/{order_db_id}", response_model=ApiResponse[dict])

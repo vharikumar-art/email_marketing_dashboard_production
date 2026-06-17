@@ -30,6 +30,8 @@ class ApiResponse(BaseModel, Generic[T]):
     message: str
     data: Optional[T] = None
     detail: Optional[Any] = None
+    pagination: Optional[dict] = None
+
 
 class PasswordUpdate(BaseModel):
     new_password: str
