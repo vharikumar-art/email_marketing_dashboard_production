@@ -812,6 +812,7 @@ class PaymentHistoryItem(BaseModel):
     payment_date: Optional[datetime] = None
     payment_received_account: Optional[str] = None
     order_title: Optional[str] = None
+    currency: Optional[str] = "USD"
     
     phase_1_payment: Optional[float] = 0.0
     phase_1_payment_date: Optional[datetime] = None

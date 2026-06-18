@@ -2203,7 +2203,17 @@ def get_payments(current_user: dict = Depends(get_current_user)):
     }
 
 @router.get("/payments/history", response_model=ApiResponse[list[PaymentHistoryItem]])
-def get_payment_history(client_id: Optional[str] = None, order_id: Optional[str] = None, current_user: dict = Depends(get_current_user)):
+def get_payment_history(
+    client_id: Optional[str] = None, 
+    order_id: Optional[str] = None, 
+    page: int = Query(1, ge=1),
+    limit: int = Query(15, ge=1, le=100),
+    search: Optional[str] = Query(None),
+    date_filter: Optional[str] = Query(None),
+    start_date: Optional[datetime] = Query(None),
+    end_date: Optional[datetime] = Query(None),
+    current_user: dict = Depends(get_current_user)
+):
     """
     Detailed payment history from the flattened payment_history_collection.
     """
@@ -2218,14 +2228,104 @@ def get_payment_history(client_id: Optional[str] = None, order_id: Optional[str]
     if order_id:
         query["order_id"] = order_id
 
-    history = list(payment_history_collection.find(query).sort("created_at", -1))
+    if search:
+        search_regex = {"$regex": search, "$options": "i"}
+        query["$or"] = [
+            {"client_id": search_regex},
+            {"reference_id": search_regex},
+            {"ref_no": search_regex},
+            {"order_id": search_regex},
+            {"order_db_id": search_regex},
+            {"manuscript_id": search_regex}
+        ]
 
+    if date_filter and date_filter != 'all':
+        now = datetime.utcnow()
+        date_query = None
+        
+        if date_filter == 'lastWeek':
+            last_week = now - timedelta(days=7)
+            date_query = {"$gte": last_week, "$lte": now}
+        elif date_filter == 'lastMonth':
+            last_month = now - timedelta(days=30)
+            date_query = {"$gte": last_month, "$lte": now}
+        elif date_filter == 'custom' and start_date and end_date:
+            # Set to start/end of day
+            s_date = start_date.replace(hour=0, minute=0, second=0, microsecond=0)
+            e_date = end_date.replace(hour=23, minute=59, second=59, microsecond=999999)
+            date_query = {"$gte": s_date, "$lte": e_date}
+            
+        if date_query:
+            if "$or" in query:
+                # If there's already an $or (from search), use $and to combine
+                existing_or = query.pop("$or")
+                query["$and"] = [
+                    {"$or": existing_or},
+                    {"$or": [
+                        {"phase_1_payment_date": date_query},
+                        {"phase_2_payment_date": date_query},
+                        {"phase_3_payment_date": date_query}
+                    ]}
+                ]
+            else:
+                query["$or"] = [
+                    {"phase_1_payment_date": date_query},
+                    {"phase_2_payment_date": date_query},
+                    {"phase_3_payment_date": date_query}
+                ]
+
+    total_items = payment_history_collection.count_documents(query)
+    total_pages = (total_items + limit - 1) // limit if limit > 0 else 0
+    skip = (page - 1) * limit
+
+    pipeline = [
+        {"$match": query},
+        {"$sort": {"created_at": -1}},
+        {"$skip": skip},
+        {"$limit": limit},
+        {
+            "$lookup": {
+                "from": "orders",
+                "localField": "order_id",
+                "foreignField": "order_id",
+                "as": "order_info"
+            }
+        },
+        {
+            "$addFields": {
+                "currency": {
+                    "$cond": {
+                        "if": {"$gt": [{"$size": "$order_info"}, 0]},
+                        "then": {"$arrayElemAt": ["$order_info.currency", 0]},
+                        "else": "USD"
+                    }
+                }
+            }
+        },
+        {
+            "$project": {
+                "order_info": 0
+            }
+        }
+    ]
+
+    history = list(payment_history_collection.aggregate(pipeline))
+
+    pagination_meta = {
+        "current_page": page,
+        "limit": limit,
+        "total_items": total_items,
+        "total_pages": total_pages,
+        "has_next": page < total_pages,
+        "has_prev": page > 1
+    }
     
     return {
         "status_code": 200,
         "status": "success",
         "message": "Payment history fetched successfully",
-        "data": history
+        "data": history,
+        "pagination": pagination_meta
     }
 
 @router.get("/payments/pending-summary", response_model=ApiResponse[PendingSummaryResponse])
