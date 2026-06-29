@@ -181,6 +181,7 @@ class SettingCategory(str, Enum):
     bank_account = "bank_account"
     we_chat = "we_chat"
     payment_method = "payment_method"
+    country = "country"
 
 class LookupSettingsData(BaseModel):
     order_type: list[str] = Field(default_factory=list)
@@ -192,6 +193,7 @@ class LookupSettingsData(BaseModel):
     bank_account: list[Union[str, dict]] = Field(default_factory=list)
     we_chat: list[str] = Field(default_factory=list)
     payment_method: list[str] = Field(default_factory=list)
+    country: list[str] = Field(default_factory=list)
 
 class SettingItemAction(BaseModel):
     option: Union[str, dict]

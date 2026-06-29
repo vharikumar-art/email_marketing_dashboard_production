@@ -98,6 +98,66 @@ def record_audit_log(document_id: str, collection_name: str, old_doc: dict, new_
                 "edited_by": user_email,
                 "edited_at": datetime.utcnow()
             })
+
+from datetime import datetime as _dt
+
+_DATE_MIN = _dt.min
+_DATE_MAX = _dt.max
+
+def _to_date_key(value):
+    """Normalise a date field value (str | datetime | None) to a datetime for sorting.
+    Returns _DATE_MAX for None/unparseable values so they sort last.
+    """
+    if value is None:
+        return _DATE_MAX
+    if isinstance(value, _dt):
+        return value
+    # Try common ISO-like string formats
+    for fmt in ("%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d", "%d-%m-%Y", "%m/%d/%Y"):
+        try:
+            return _dt.strptime(str(value)[:19], fmt)
+        except ValueError:
+            continue
+    return _DATE_MAX
+
+ALLOWED_DATE_SORT_FIELDS = {
+    "order_date", "writing_start_date", "writing_end_date",
+    "modification_start_date", "modification_end_date",
+    "po_start_date", "po_end_date",
+}
+
+def _filter_and_paginate(data: list[dict], page: int = 1, limit: int = 25, sort_by: str = None, sort_order: str = None) -> tuple[list[dict], dict, dict]:
+    """Simple pagination helper.
+    Returns a slice of `data` for the requested page/limit, pagination metadata, and an empty filter options dict.
+    Supports optional date-field sorting via sort_by / sort_order ('asc' | 'desc').
+    """
+    # --- Sorting (date fields only) ---
+    if sort_by and sort_by in ALLOWED_DATE_SORT_FIELDS and sort_order in ("asc", "desc"):
+        reverse = sort_order == "desc"
+        data = sorted(
+            data,
+            key=lambda row: _to_date_key(row.get(sort_by)),
+            reverse=reverse,
+        )
+
+    total_items = len(data)
+    total_pages = (total_items + limit - 1) // limit if limit else 1
+    if page > total_pages:
+        page = max(total_pages, 1)
+    start = (page - 1) * limit
+    end = start + limit
+    paginated = data[start:end]
+    pagination_meta = {
+        "page": page,
+        "limit": limit,
+        "total_items": total_items,
+        "total_pages": total_pages,
+        "has_next": page < total_pages,
+        "has_previous": page > 1,
+    }
+    # Placeholder for any future filter options; currently none.
+    filter_opts: dict = {}
+    return paginated, pagination_meta, filter_opts
 def is_otp_enabled() -> bool:
     """
     Check if OTP authentication is enabled.
@@ -276,9 +336,11 @@ def generate_custom_id(prefix: str, collection, current_user: dict):
     if current_user["role"] == UserRole.ADMIN:
         start, end = 1, 9999
     else:
-        # Default range if not set
-        start = current_user.get("id_range_start", 100)
-        end = current_user.get("id_range_end", 200)
+        # Default range if not set or if it is None
+        start = current_user.get("id_range_start")
+        start = start if start is not None else 100
+        end = current_user.get("id_range_end")
+        end = end if end is not None else 200
     
     # 2. Find existing IDs in this range for this year
     field_name = "client_id" if prefix == "CL" else "reference_id"
@@ -996,7 +1058,7 @@ def delete_user_photo(email: str, current_user: dict = Depends(get_current_user)
 async def upload_client_photo(
     client_id: str,
     file: UploadFile = File(...),
-    current_user: dict = Depends(require_manager_or_higher)
+    current_user: dict = Depends(get_current_user)
 ):
     if not file.content_type.startswith("image/"):
         raise HTTPException(status_code=400, detail="File must be an image")
@@ -1022,7 +1084,7 @@ async def upload_client_photo(
     return {"status": "success", "message": "Client photo uploaded successfully", "photo_url": photo_path}
 
 @router.delete("/clients/{client_id}/photo", status_code=200)
-def delete_client_photo(client_id: str, current_user: dict = Depends(require_manager_or_higher)):
+def delete_client_photo(client_id: str, current_user: dict = Depends(get_current_user)):
     """Delete a client's profile photo."""
     target = clients_collection.find_one({"client_id": client_id})
     if not target:
@@ -1063,7 +1125,7 @@ async def upload_receipt_screenshot(
     order_db_id: str,
     phase: int,
     file: UploadFile = File(...),
-    current_user: dict = Depends(require_manager_or_higher)
+    current_user: dict = Depends(get_current_user)
 ):
     """
     Upload a payment receipt screenshot/document for an order phase (1, 2, or 3).
@@ -1163,7 +1225,7 @@ def get_receipt_screenshot(order_db_id: str, phase: int):
 def delete_receipt_screenshot(
     order_db_id: str,
     phase: int,
-    current_user: dict = Depends(require_manager_or_higher)
+    current_user: dict = Depends(get_current_user)
 ):
     """
     Delete a payment receipt screenshot from an order phase.
@@ -2135,6 +2197,15 @@ def create_order(order: OrderCreate, current_user: dict = Depends(require_manage
 
     
     order_dict = order.model_dump()
+    
+    # Auto-update is_new_order based on existing orders
+    existing_orders_count = orders_collection.count_documents({"client_id": order.client_id})
+    if existing_orders_count > 1:
+        order_dict["is_new_order"] = "no"
+        orders_collection.update_many({"client_id": order.client_id}, {"$set": {"is_new_order": "no"}})
+    else:
+        order_dict["is_new_order"] = "yes"
+        
     order_dict["created_at"] = datetime.utcnow()
     order_dict["updated_at"] = datetime.utcnow()
     result = orders_collection.insert_one(order_dict)
@@ -2621,6 +2692,8 @@ def get_dashboard_orders(
     is_new_order: Optional[str] = Query(None),
     order_type: Optional[str] = Query(None),
     we_chat: Optional[str] = Query(None),
+    sort_by: Optional[str] = Query(None),
+    sort_order: Optional[str] = Query(None),
     current_user: dict = Depends(get_current_user)
 ):
     """
@@ -2672,7 +2745,16 @@ def get_dashboard_orders(
             if we_chat and str(row.get("we_chat", "")).strip().lower() != we_chat.strip().lower(): continue
             
             filtered.append(row)
-            
+
+        # --- Date-field sorting ---
+        if sort_by and sort_by in ALLOWED_DATE_SORT_FIELDS and sort_order in ("asc", "desc"):
+            reverse = sort_order == "desc"
+            filtered = sorted(
+                filtered,
+                key=lambda row: _to_date_key(row.get(sort_by)),
+                reverse=reverse,
+            )
+
         total_items = len(filtered)
         total_pages = (total_items + limit - 1) // limit if limit > 0 else 0
         skip = (page - 1) * limit
@@ -3327,6 +3409,14 @@ def create_unified_record(
             detail=f"Reference ID '{request.reference_id}' already exists"
         )
 
+    # Auto-update is_new_order based on existing orders
+    existing_orders_count = orders_collection.count_documents({"client_id": client_id})
+    if existing_orders_count > 0:
+        is_new_order_val = "no"
+        orders_collection.update_many({"client_id": client_id}, {"$set": {"is_new_order": "no"}})
+    else:
+        is_new_order_val = "yes"
+
     order_data = {
         "order_id": order_id,
         "reference_id": request.reference_id,
@@ -3360,7 +3450,7 @@ def create_unified_record(
         "clients_details": request.clients_details or getattr(request, 'client_details', None),
         "client_drive_link": request.client_drive_link,
         "receive_bank_account": request.receive_bank_account,
-        "is_new_order": request.is_new_order or "yes",
+        "is_new_order": is_new_order_val,
         "remarks": None,
         "created_at": datetime.utcnow(),
         "updated_at": datetime.utcnow()
